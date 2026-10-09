@@ -417,3 +417,285 @@ def test_owner_and_admin_promotions_and_analytics():
     assert "average_order_value_paise" in owner_analytics.json()
 
     db.close()
+
+
+def test_method1_admin_created_restaurant_flow():
+    db = TestingSessionLocal()
+    admin = User(
+        email="admin_m1@foodflow.com",
+        hashed_password=get_password_hash("adminpass"),
+        full_name="Super Admin",
+        role=UserRole.ADMIN,
+        is_active=True,
+        is_approved=True
+    )
+    db.add(admin)
+    db.commit()
+
+    admin_login = client.post("/auth/login", json={"username": "admin_m1@foodflow.com", "password": "adminpass"})
+    assert admin_login.status_code == 200
+    admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
+
+    # 1. Admin creates restaurant and creates a new owner on the fly
+    create_resp = client.post(
+        "/admin/restaurants",
+        json={
+            "name": "Admin Direct Palace",
+            "cuisine": "North Indian, Mughlai",
+            "description": "Grand dining experience",
+            "address_text": "Indiranagar 100ft Road",
+            "delivery_fee_paise": 4000,
+            "min_order_paise": 15000,
+            "estimated_delivery_time": "30-40 min",
+            "owner_email": "direct_owner@foodflow.com",
+            "owner_full_name": "Direct Hotel Owner",
+            "owner_password": "ownerpassword123",
+            "owner_phone": "9876543210"
+        },
+        headers=admin_headers
+    )
+    assert create_resp.status_code == 200
+    rest_data = create_resp.json()
+    assert rest_data["name"] == "Admin Direct Palace"
+    assert rest_data["is_approved"] is True
+    assert rest_data["is_active"] is True
+    assert rest_data["owner_id"] is not None
+
+    # Verify newly created owner account
+    owner_user = db.query(User).filter(User.email == "direct_owner@foodflow.com").first()
+    assert owner_user is not None
+    assert owner_user.role == UserRole.RESTAURANT_OWNER
+
+    # Verify immediate customer visibility
+    cust_resp = client.get("/restaurants")
+    assert cust_resp.status_code == 200
+    assert any(r["id"] == rest_data["id"] for r in cust_resp.json())
+
+    # 2. Admin creates another restaurant assigning an existing user
+    existing_user = User(
+        email="existing_user@foodflow.com",
+        hashed_password=get_password_hash("pass123"),
+        full_name="Existing User",
+        role=UserRole.CUSTOMER,
+        is_active=True,
+        is_approved=True
+    )
+    db.add(existing_user)
+    db.commit()
+    db.refresh(existing_user)
+
+    create_resp2 = client.post(
+        "/admin/restaurants",
+        json={
+            "name": "Assigned Pizza Hub",
+            "cuisine": "Italian, Pizza",
+            "description": "Wood fired pizzas",
+            "address_text": "MG Road",
+            "delivery_fee_paise": 3500,
+            "min_order_paise": 12000,
+            "owner_id": existing_user.id
+        },
+        headers=admin_headers
+    )
+    assert create_resp2.status_code == 200
+    assert create_resp2.json()["owner_id"] == existing_user.id
+    assert create_resp2.json()["is_approved"] is True
+    assert create_resp2.json()["is_active"] is True
+
+    # User promoted to RESTAURANT_OWNER
+    db.refresh(existing_user)
+    assert existing_user.role == UserRole.RESTAURANT_OWNER
+    db.close()
+
+
+def test_method2_owner_self_registration_approval_rejection_and_visibility():
+    db = TestingSessionLocal()
+    admin = User(
+        email="admin_m2@foodflow.com",
+        hashed_password=get_password_hash("adminpass"),
+        full_name="Super Admin",
+        role=UserRole.ADMIN,
+        is_active=True,
+        is_approved=True
+    )
+    db.add(admin)
+    db.commit()
+
+    # 1. Public owner self-registration
+    reg_resp = client.post(
+        "/auth/register-owner",
+        json={
+            "full_name": "Applicant Owner",
+            "email": "applicant@foodflow.com",
+            "password": "applicantpass",
+            "phone": "9998887776",
+            "restaurant_name": "Applicant Biryani Point",
+            "cuisine": "Hyderabadi Biryani",
+            "description": "Authentic coal-cooked dum biryani",
+            "address_text": "Koramangala 5th Block",
+            "delivery_fee_paise": 3000,
+            "min_order_paise": 10000,
+            "estimated_delivery_time": "25-35 min"
+        }
+    )
+    assert reg_resp.status_code == 200
+    reg_data = reg_resp.json()
+    assert reg_data["user"]["role"] == "RESTAURANT_OWNER"
+    owner_token = reg_data["access_token"]
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+
+    # 2. Owner checks their restaurant profile
+    my_rest = client.get("/owner/restaurant", headers=owner_headers)
+    assert my_rest.status_code == 200
+    rest_id = my_rest.json()["id"]
+    assert my_rest.json()["name"] == "Applicant Biryani Point"
+    assert my_rest.json()["is_approved"] is False
+    assert my_rest.json()["is_active"] is False
+
+    # 3. Owner adds a food item before approval
+    food_resp = client.post(
+        "/owner/foods",
+        json={
+            "name": "Chicken Dum Biryani",
+            "description": "Spiced basmati rice with tender chicken",
+            "price_paise": 28000,
+            "is_veg": False,
+            "is_available": True
+        },
+        headers=owner_headers
+    )
+    assert food_resp.status_code == 200
+    food_id = food_resp.json()["id"]
+
+    owner_foods = client.get("/owner/foods", headers=owner_headers)
+    assert owner_foods.status_code == 200
+    assert len(owner_foods.json()) == 1
+
+    # 4. Strict customer visibility check: Unapproved restaurant must NOT be visible
+    cust_rests = client.get("/restaurants")
+    assert cust_rests.status_code == 200
+    assert not any(r["id"] == rest_id for r in cust_rests.json())
+
+    cust_detail = client.get(f"/restaurants/{rest_id}")
+    assert cust_detail.status_code == 404
+
+    cust_foods = client.get(f"/restaurants/{rest_id}/foods")
+    assert cust_foods.status_code == 404
+
+    # 5. Admin reviews application and tests Rejection
+    admin_login = client.post("/auth/login", json={"username": "admin_m2@foodflow.com", "password": "adminpass"})
+    admin_headers = {"Authorization": f"Bearer {admin_login.json()['access_token']}"}
+
+    reject_resp = client.put(f"/admin/restaurants/{rest_id}/reject", headers=admin_headers)
+    assert reject_resp.status_code == 200
+    assert reject_resp.json()["is_approved"] is False
+    assert reject_resp.json()["is_active"] is False
+
+    # Still hidden from customers
+    assert client.get(f"/restaurants/{rest_id}").status_code == 404
+
+    # 6. Admin approves restaurant
+    approve_resp = client.put(f"/admin/restaurants/{rest_id}/approve", headers=admin_headers)
+    assert approve_resp.status_code == 200
+    assert approve_resp.json()["is_approved"] is True
+    assert approve_resp.json()["is_active"] is True
+
+    # 7. Customer visibility check: Now visible and orderable!
+    cust_rests_approved = client.get("/restaurants")
+    assert cust_rests_approved.status_code == 200
+    assert any(r["id"] == rest_id for r in cust_rests_approved.json())
+
+    cust_detail_approved = client.get(f"/restaurants/{rest_id}")
+    assert cust_detail_approved.status_code == 200
+    assert cust_detail_approved.json()["name"] == "Applicant Biryani Point"
+
+    cust_foods_approved = client.get(f"/restaurants/{rest_id}/foods")
+    assert cust_foods_approved.status_code == 200
+    assert len(cust_foods_approved.json()) == 1
+    assert cust_foods_approved.json()[0]["id"] == food_id
+
+    # 8. Admin suspends the restaurant
+    toggle_resp = client.put(f"/admin/restaurants/{rest_id}/toggle-active", headers=admin_headers)
+    assert toggle_resp.status_code == 200
+    assert toggle_resp.json()["is_active"] is False
+
+    # Suspended restaurant is hidden from customer searches again
+    assert not any(r["id"] == rest_id for r in client.get("/restaurants").json())
+    assert client.get(f"/restaurants/{rest_id}").status_code == 404
+
+    db.close()
+
+
+def test_owner_authorization_isolation():
+    db = TestingSessionLocal()
+    owner1 = User(
+        email="owner1@foodflow.com",
+        hashed_password=get_password_hash("pass1"),
+        full_name="Owner One",
+        role=UserRole.RESTAURANT_OWNER,
+        is_active=True,
+        is_approved=True
+    )
+    owner2 = User(
+        email="owner2@foodflow.com",
+        hashed_password=get_password_hash("pass2"),
+        full_name="Owner Two",
+        role=UserRole.RESTAURANT_OWNER,
+        is_active=True,
+        is_approved=True
+    )
+    rest1 = Restaurant(
+        owner_id=None,
+        name="Rest One",
+        cuisine="Indian",
+        is_approved=True,
+        is_active=True
+    )
+    rest2 = Restaurant(
+        owner_id=None,
+        name="Rest Two",
+        cuisine="Mexican",
+        is_approved=True,
+        is_active=True
+    )
+    db.add_all([owner1, owner2, rest1, rest2])
+    db.commit()
+    db.refresh(owner1)
+    db.refresh(owner2)
+    db.refresh(rest1)
+    db.refresh(rest2)
+
+    rest1.owner_id = owner1.id
+    rest2.owner_id = owner2.id
+    food1 = FoodItem(restaurant_id=rest1.id, name="Biryani 1", price_paise=20000, is_veg=False, is_available=True)
+    db.add(food1)
+    db.commit()
+    db.refresh(food1)
+
+    # Owner 2 logs in
+    o2_login = client.post("/auth/login", json={"username": "owner2@foodflow.com", "password": "pass2"})
+    o2_headers = {"Authorization": f"Bearer {o2_login.json()['access_token']}"}
+
+    # Owner 2 tries to toggle food availability of Owner 1's dish
+    toggle_attack = client.put(f"/owner/foods/{food1.id}/toggle-availability", headers=o2_headers)
+    assert toggle_attack.status_code == 404
+
+    # Owner 2 updates their own restaurant
+    my_update = client.put(
+        "/owner/restaurant",
+        json={
+            "name": "Rest Two Updated",
+            "cuisine": "Mexican Tacos",
+            "delivery_fee_paise": 2500,
+            "min_order_paise": 8000
+        },
+        headers=o2_headers
+    )
+    assert my_update.status_code == 200
+    assert my_update.json()["name"] == "Rest Two Updated"
+
+    # Rest 1 was not affected
+    db.refresh(rest1)
+    assert rest1.name == "Rest One"
+
+    db.close()

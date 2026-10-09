@@ -61,6 +61,27 @@ def onboard_restaurant(
     db.add(restaurant)
     db.commit()
     db.refresh(restaurant)
+
+    # Notify super admin accounts of new restaurant application
+    admin_users = db.query(User).filter(User.role == UserRole.ADMIN).all()
+    for admin in admin_users:
+        create_system_notification(
+            db=db,
+            user_id=admin.id,
+            title="New Restaurant Application 🛎️",
+            message=f"'{restaurant.name}' has been registered by {current_user.email} and is awaiting review.",
+            notif_type="SYSTEM"
+        )
+
+    # Send confirmation notification to the owner
+    create_system_notification(
+        db=db,
+        user_id=current_user.id,
+        title="Application Received ⏳",
+        message=f"Thank you for registering '{restaurant.name}'. Your application is currently under review by Super Admin.",
+        notif_type="SYSTEM"
+    )
+
     return restaurant
 
 @router.put("/restaurant", response_model=RestaurantResponse)
@@ -187,6 +208,16 @@ def toggle_food_availability(
     db.commit()
     db.refresh(food)
     return food
+
+@router.get("/foods", response_model=List[FoodItemResponse])
+def get_owner_foods(
+    current_user: User = Depends(require_restaurant_owner),
+    db: Session = Depends(get_db)
+):
+    restaurant = db.query(Restaurant).filter(Restaurant.owner_id == current_user.id).first()
+    if not restaurant:
+        return []
+    return db.query(FoodItem).filter(FoodItem.restaurant_id == restaurant.id).all()
 
 @router.get("/orders", response_model=List[OrderResponse])
 def get_restaurant_orders(

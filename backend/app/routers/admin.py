@@ -9,11 +9,12 @@ from ..models import (
     AuditLog, UserRole
 )
 from ..schemas import (
-    UserCreate, UserResponse, RestaurantResponse, DeliveryPartnerResponse,
+    AdminRestaurantCreate, UserCreate, UserResponse, RestaurantResponse, DeliveryPartnerResponse,
     OrderResponse, CouponCreate, CouponResponse, CouponAnalyticsResponse,
     AdminMetricsResponse, AdminAnalyticsResponse
 )
 from ..auth import require_admin, get_password_hash
+from .notifications import create_system_notification
 
 router = APIRouter(prefix="/admin", tags=["Admin Panel & Promotion Engine"])
 
@@ -163,6 +164,89 @@ def get_all_restaurants(
 ):
     return db.query(Restaurant).order_by(Restaurant.id.desc()).all()
 
+@router.post("/restaurants", response_model=RestaurantResponse)
+def create_restaurant_by_admin(
+    rest_in: AdminRestaurantCreate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    owner_id = rest_in.owner_id
+
+    # If admin specified a new owner on the fly
+    if not owner_id and rest_in.owner_email and rest_in.owner_password:
+        clean_email = rest_in.owner_email.strip().lower()
+        existing = db.query(User).filter(User.email == clean_email).first()
+        if existing:
+            existing.role = UserRole.RESTAURANT_OWNER
+            db.commit()
+            owner_id = existing.id
+        else:
+            new_owner = User(
+                email=clean_email,
+                hashed_password=get_password_hash(rest_in.owner_password),
+                full_name=(rest_in.owner_full_name or clean_email).strip(),
+                phone=rest_in.owner_phone.strip() if rest_in.owner_phone else None,
+                role=UserRole.RESTAURANT_OWNER,
+                is_active=True,
+                is_approved=True,
+                created_at=datetime.utcnow()
+            )
+            db.add(new_owner)
+            db.commit()
+            db.refresh(new_owner)
+            owner_id = new_owner.id
+    elif owner_id:
+        owner_user = db.query(User).filter(User.id == owner_id).first()
+        if not owner_user:
+            raise HTTPException(status_code=404, detail="Selected owner account not found")
+        if owner_user.role != UserRole.RESTAURANT_OWNER:
+            owner_user.role = UserRole.RESTAURANT_OWNER
+            db.commit()
+
+    # Admin-created restaurants are active and approved immediately
+    restaurant = Restaurant(
+        owner_id=owner_id,
+        name=rest_in.name.strip(),
+        description=rest_in.description.strip() if rest_in.description else None,
+        cuisine=rest_in.cuisine.strip(),
+        image_url=rest_in.image_url,
+        delivery_fee_paise=rest_in.delivery_fee_paise,
+        min_order_paise=rest_in.min_order_paise,
+        estimated_delivery_time=rest_in.estimated_delivery_time,
+        latitude=rest_in.latitude or 12.9352,
+        longitude=rest_in.longitude or 77.6245,
+        address_text=rest_in.address_text or "Block 4, Koramangala Food Street",
+        is_open=rest_in.is_open,
+        opening_time=rest_in.opening_time,
+        closing_time=rest_in.closing_time,
+        prep_time_minutes=rest_in.prep_time_minutes,
+        is_active=True,
+        is_approved=True
+    )
+    db.add(restaurant)
+    db.commit()
+    db.refresh(restaurant)
+
+    log = AuditLog(
+        admin_id=current_user.id,
+        action="ADMIN_CREATE_RESTAURANT",
+        details=f"Admin created and approved restaurant '{restaurant.name}' (id={restaurant.id}, owner_id={owner_id})"
+    )
+    db.add(log)
+    db.commit()
+
+    # Send notification to owner if assigned
+    if owner_id:
+        create_system_notification(
+            db=db,
+            user_id=owner_id,
+            title="Restaurant Provisioned 🎉",
+            message=f"Admin has set up '{restaurant.name}' for your account. You can now manage menu dishes and live orders.",
+            notif_type="SYSTEM"
+        )
+
+    return restaurant
+
 @router.put("/restaurants/{restaurant_id}/approve", response_model=RestaurantResponse)
 def approve_restaurant(
     restaurant_id: int,
@@ -184,6 +268,17 @@ def approve_restaurant(
     db.add(log)
     db.commit()
     db.refresh(rest)
+
+    # Notify restaurant owner
+    if rest.owner_id:
+        create_system_notification(
+            db=db,
+            user_id=rest.owner_id,
+            title="Restaurant Approved! 🎉",
+            message=f"Congratulations! '{rest.name}' has been approved by Super Admin and is now live and accepting orders.",
+            notif_type="SYSTEM"
+        )
+
     return rest
 
 @router.put("/restaurants/{restaurant_id}/reject", response_model=RestaurantResponse)
@@ -207,6 +302,17 @@ def reject_restaurant(
     db.add(log)
     db.commit()
     db.refresh(rest)
+
+    # Notify restaurant owner
+    if rest.owner_id:
+        create_system_notification(
+            db=db,
+            user_id=rest.owner_id,
+            title="Application Status Update ⚠️",
+            message=f"Your restaurant registration for '{rest.name}' was not approved. Please review your details and resubmit.",
+            notif_type="SYSTEM"
+        )
+
     return rest
 
 @router.put("/restaurants/{restaurant_id}/toggle-active", response_model=RestaurantResponse)
@@ -229,6 +335,18 @@ def toggle_restaurant_active(
     db.add(log)
     db.commit()
     db.refresh(rest)
+
+    # Notify restaurant owner of status change
+    if rest.owner_id:
+        status_label = "Active & Accepting Orders" if rest.is_active else "Suspended / Inactive"
+        create_system_notification(
+            db=db,
+            user_id=rest.owner_id,
+            title="Store Status Changed",
+            message=f"Admin has updated '{rest.name}' status to: {status_label}.",
+            notif_type="SYSTEM"
+        )
+
     return rest
 
 # Admin Promotions Management

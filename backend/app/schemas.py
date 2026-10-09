@@ -96,6 +96,27 @@ class RestaurantBase(BaseModel):
 class RestaurantCreate(RestaurantBase):
     pass
 
+class AdminRestaurantCreate(RestaurantBase):
+    owner_id: Optional[int] = None
+    owner_email: Optional[EmailStr] = None
+    owner_full_name: Optional[str] = None
+    owner_password: Optional[str] = None
+    owner_phone: Optional[str] = None
+
+class OwnerRegistrationRequest(BaseModel):
+    full_name: str
+    email: EmailStr
+    password: str
+    phone: Optional[str] = None
+    restaurant_name: str
+    cuisine: str
+    description: Optional[str] = None
+    address_text: Optional[str] = None
+    image_url: Optional[str] = None
+    delivery_fee_paise: int = 3000
+    min_order_paise: int = 10000
+    estimated_delivery_time: str = "25-35 min"
+
 class RestaurantResponse(RestaurantBase):
     id: int
     owner_id: Optional[int] = None

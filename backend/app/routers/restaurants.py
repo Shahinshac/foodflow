@@ -125,9 +125,13 @@ def get_restaurants(
 
 @router.get("/{restaurant_id}", response_model=RestaurantDetailResponse)
 def get_restaurant_detail(restaurant_id: int, db: Session = Depends(get_db)):
-    restaurant = db.query(Restaurant).filter(Restaurant.id == restaurant_id).first()
+    restaurant = db.query(Restaurant).filter(
+        Restaurant.id == restaurant_id,
+        Restaurant.is_active == True,
+        Restaurant.is_approved == True
+    ).first()
     if not restaurant:
-        raise HTTPException(status_code=404, detail="Restaurant not found")
+        raise HTTPException(status_code=404, detail="Restaurant not found or not currently available")
 
     now = datetime.utcnow()
     offer_count = db.query(Coupon).filter(
@@ -137,7 +141,10 @@ def get_restaurant_detail(restaurant_id: int, db: Session = Depends(get_db)):
     ).count()
 
     categories = db.query(FoodCategory).filter(FoodCategory.restaurant_id == restaurant_id).all()
-    foods = db.query(FoodItem).filter(FoodItem.restaurant_id == restaurant_id).all()
+    foods = db.query(FoodItem).filter(
+        FoodItem.restaurant_id == restaurant_id,
+        FoodItem.is_available == True
+    ).all()
 
     return RestaurantDetailResponse(
         id=restaurant.id,
@@ -167,6 +174,14 @@ def get_restaurant_detail(restaurant_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{restaurant_id}/foods", response_model=List[FoodItemResponse])
 def get_restaurant_foods(restaurant_id: int, db: Session = Depends(get_db)):
+    restaurant = db.query(Restaurant).filter(
+        Restaurant.id == restaurant_id,
+        Restaurant.is_active == True,
+        Restaurant.is_approved == True
+    ).first()
+    if not restaurant:
+        raise HTTPException(status_code=404, detail="Restaurant not found or not currently available")
+
     return db.query(FoodItem).filter(
         FoodItem.restaurant_id == restaurant_id,
         FoodItem.is_available == True

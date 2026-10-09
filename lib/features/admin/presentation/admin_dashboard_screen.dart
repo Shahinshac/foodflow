@@ -277,6 +277,298 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
     );
   }
 
+  void _showCreateRestaurantDialog() {
+    final formKey = GlobalKey<FormState>();
+    final nameCtrl = TextEditingController();
+    final cuisineCtrl = TextEditingController();
+    final addressCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
+    final imageCtrl = TextEditingController(text: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800');
+    final deliveryTimeCtrl = TextEditingController(text: '30');
+    final deliveryFeeCtrl = TextEditingController(text: '30');
+    final minOrderCtrl = TextEditingController(text: '100');
+    final commissionCtrl = TextEditingController(text: '15');
+
+    bool createNewOwner = true;
+    int? selectedOwnerId;
+    final ownerNameCtrl = TextEditingController();
+    final ownerEmailCtrl = TextEditingController();
+    final ownerPhoneCtrl = TextEditingController();
+    final ownerPassCtrl = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          final usersState = ref.watch(adminUsersProvider);
+          final existingOwners = usersState.asData?.value.where((u) => u.role == 'OWNER').toList() ?? [];
+
+          return Container(
+            padding: EdgeInsets.only(
+              top: 24,
+              left: 24,
+              right: 24,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+            ),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            child: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Direct Onboard Restaurant', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                        IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Admin-created restaurants are approved and active immediately.',
+                      style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(labelText: 'Restaurant Name', hintText: 'e.g. Spice Route'),
+                      validator: (v) => v == null || v.trim().isEmpty ? 'Name required' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: cuisineCtrl,
+                      decoration: const InputDecoration(labelText: 'Cuisine', hintText: 'e.g. Indian, Chinese, Italian'),
+                      validator: (v) => v == null || v.trim().isEmpty ? 'Cuisine required' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: addressCtrl,
+                      decoration: const InputDecoration(labelText: 'Address', hintText: 'Full physical address'),
+                      validator: (v) => v == null || v.trim().isEmpty ? 'Address required' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: phoneCtrl,
+                      keyboardType: TextInputType.phone,
+                      decoration: const InputDecoration(labelText: 'Contact Phone Number', hintText: 'e.g. 9876543210'),
+                      validator: (v) => v == null || v.trim().isEmpty ? 'Phone required' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: deliveryFeeCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Delivery Fee (₹)', prefixText: '₹ '),
+                            validator: (v) => v == null || double.tryParse(v) == null ? 'Fee required' : null,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: minOrderCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Min Order (₹)', prefixText: '₹ '),
+                            validator: (v) => v == null || double.tryParse(v) == null ? 'Min order required' : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: deliveryTimeCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Est Time (mins)', suffixText: 'mins'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: commissionCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Commission (%)', suffixText: '%'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    const Text('Owner Assignment', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ChoiceChip(
+                            label: const Text('Create New Owner'),
+                            selected: createNewOwner,
+                            selectedColor: AppColors.primary,
+                            labelStyle: TextStyle(color: createNewOwner ? Colors.white : Colors.black87, fontWeight: FontWeight.bold, fontSize: 12),
+                            onSelected: (val) {
+                              setModalState(() => createNewOwner = true);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ChoiceChip(
+                            label: const Text('Assign Existing Owner'),
+                            selected: !createNewOwner,
+                            selectedColor: AppColors.primary,
+                            labelStyle: TextStyle(color: !createNewOwner ? Colors.white : Colors.black87, fontWeight: FontWeight.bold, fontSize: 12),
+                            onSelected: (val) {
+                              setModalState(() {
+                                createNewOwner = false;
+                                if (existingOwners.isNotEmpty && selectedOwnerId == null) {
+                                  selectedOwnerId = existingOwners.first.id;
+                                }
+                              });
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (createNewOwner) ...[
+                      TextFormField(
+                        controller: ownerNameCtrl,
+                        decoration: const InputDecoration(labelText: 'Owner Full Name', hintText: 'e.g. Rahul Sharma'),
+                        validator: (v) => createNewOwner && (v == null || v.trim().isEmpty) ? 'Owner name required' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: ownerEmailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(labelText: 'Owner Email', hintText: 'e.g. rahul@restaurant.com'),
+                        validator: (v) => createNewOwner && (v == null || !v.contains('@')) ? 'Valid owner email required' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: ownerPassCtrl,
+                        obscureText: true,
+                        decoration: const InputDecoration(labelText: 'Owner Password', hintText: 'Min 6 characters'),
+                        validator: (v) => createNewOwner && (v == null || v.length < 6) ? 'Password min 6 chars' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: ownerPhoneCtrl,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(labelText: 'Owner Phone (Optional)', hintText: 'e.g. 9876543210'),
+                      ),
+                    ] else ...[
+                      if (existingOwners.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.amber.shade200),
+                          ),
+                          child: const Text('No existing owner accounts found. Please choose "Create New Owner" above.', style: TextStyle(fontSize: 13)),
+                        )
+                      else
+                        DropdownButtonFormField<int>(
+                          initialValue: selectedOwnerId ?? existingOwners.first.id,
+                          decoration: const InputDecoration(labelText: 'Select Existing Owner'),
+                          items: existingOwners.map((o) => DropdownMenuItem<int>(
+                            value: o.id,
+                            child: Text('${o.fullName} (${o.email})'),
+                          )).toList(),
+                          onChanged: (val) {
+                            setModalState(() => selectedOwnerId = val);
+                          },
+                        ),
+                    ],
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        onPressed: () async {
+                          if (formKey.currentState!.validate()) {
+                            if (!createNewOwner && selectedOwnerId == null && existingOwners.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('No owner account selected'), backgroundColor: AppColors.error),
+                              );
+                              return;
+                            }
+                            try {
+                              final api = ref.read(apiClientProvider);
+                              final delFeePaise = (double.parse(deliveryFeeCtrl.text.trim()) * 100).toInt();
+                              final minOrderPaise = (double.parse(minOrderCtrl.text.trim()) * 100).toInt();
+                              final delTime = int.tryParse(deliveryTimeCtrl.text.trim()) ?? 30;
+                              final commRate = (double.tryParse(commissionCtrl.text.trim()) ?? 15.0) / 100.0;
+
+                              final Map<String, dynamic> payload = {
+                                'name': nameCtrl.text.trim(),
+                                'cuisine': cuisineCtrl.text.trim(),
+                                'address': addressCtrl.text.trim(),
+                                'phone': phoneCtrl.text.trim(),
+                                'image_url': imageCtrl.text.trim().isNotEmpty ? imageCtrl.text.trim() : null,
+                                'delivery_time_mins': delTime,
+                                'delivery_fee_paise': delFeePaise,
+                                'minimum_order_paise': minOrderPaise,
+                                'commission_rate': commRate,
+                              };
+
+                              if (createNewOwner) {
+                                payload['owner_name'] = ownerNameCtrl.text.trim();
+                                payload['owner_email'] = ownerEmailCtrl.text.trim().toLowerCase();
+                                payload['owner_password'] = ownerPassCtrl.text;
+                                payload['owner_phone'] = ownerPhoneCtrl.text.trim().isNotEmpty ? ownerPhoneCtrl.text.trim() : null;
+                              } else {
+                                payload['owner_id'] = selectedOwnerId ?? existingOwners.first.id;
+                              }
+
+                              await api.dio.post('/admin/restaurants', data: payload);
+                              ref.invalidate(adminRestaurantsProvider);
+                              ref.invalidate(adminUsersProvider);
+                              ref.invalidate(adminAnalyticsProvider);
+                              if (ctx.mounted) {
+                                Navigator.pop(ctx);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Restaurant onboarded & activated successfully!'),
+                                    backgroundColor: AppColors.veg,
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              if (ctx.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Failed to create restaurant: $e'), backgroundColor: AppColors.error),
+                                );
+                              }
+                            }
+                          }
+                        },
+                        child: const Text('Create & Activate Restaurant', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   void _showCampaignAnalytics(int promoId) async {
     try {
       final apiClient = ref.read(apiClientProvider);
@@ -820,140 +1112,176 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
           RefreshIndicator(
             onRefresh: () async => ref.invalidate(adminRestaurantsProvider),
             color: AppColors.primary,
-            child: restaurantsAsync.when(
-              data: (restaurants) {
-                if (restaurants.isEmpty) {
-                  return ListView(
-                    padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      SizedBox(height: MediaQuery.of(context).size.height * 0.15),
-                      Center(
-                        child: Column(
-                          children: [
-                            Icon(Icons.storefront_outlined, size: 72, color: Colors.grey.shade300),
-                            const SizedBox(height: 16),
-                            const Text('No Restaurants Registered Yet', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Invite restaurant owners in the Users tab to register their hotels.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
-                            ),
-                          ],
+                      const Text('Partner Stores', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.add_business_rounded, size: 16),
+                        label: const Text('Add Restaurant', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
+                        onPressed: _showCreateRestaurantDialog,
                       ),
                     ],
-                  );
-                }
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16.0),
-                  itemCount: restaurants.length,
-                  itemBuilder: (context, index) {
-                    final r = restaurants[index];
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: AppColors.softShadow,
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                  ),
+                ),
+                Expanded(
+                  child: restaurantsAsync.when(
+                    data: (restaurants) {
+                      if (restaurants.isEmpty) {
+                        return ListView(
+                          padding: const EdgeInsets.all(24),
                           children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: CachedNetworkImage(
-                                    imageUrl: AppConstants.resolveImageUrl(r.imageUrl),
-                                    width: 54,
-                                    height: 54,
-                                    fit: BoxFit.cover,
+                            SizedBox(height: MediaQuery.of(context).size.height * 0.1),
+                            Center(
+                              child: Column(
+                                children: [
+                                  Icon(Icons.storefront_outlined, size: 72, color: Colors.grey.shade300),
+                                  const SizedBox(height: 16),
+                                  const Text('No Restaurants Registered Yet', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Click "Add Restaurant" to onboard directly, or invite owners to register.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
                                   ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                  const SizedBox(height: 16),
+                                  ElevatedButton.icon(
+                                    onPressed: _showCreateRestaurantDialog,
+                                    icon: const Icon(Icons.add_business_rounded),
+                                    label: const Text('Direct Onboard Restaurant'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.primary,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        );
+                      }
+                      return ListView.builder(
+                        padding: const EdgeInsets.all(16.0),
+                        itemCount: restaurants.length,
+                        itemBuilder: (context, index) {
+                          final r = restaurants[index];
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: AppColors.softShadow,
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
                                     children: [
-                                      Text(r.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                      const SizedBox(height: 2),
-                                      Text('${r.cuisine} • Rating: ${r.rating} ⭐', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                                      const SizedBox(height: 4),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: r.isApproved
-                                              ? (r.isActive ? AppColors.veg.withValues(alpha: 0.15) : Colors.grey.withValues(alpha: 0.15))
-                                              : Colors.orange.withValues(alpha: 0.15),
-                                          borderRadius: BorderRadius.circular(6),
+                                      ClipRRect(
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: CachedNetworkImage(
+                                          imageUrl: AppConstants.resolveImageUrl(r.imageUrl),
+                                          width: 54,
+                                          height: 54,
+                                          fit: BoxFit.cover,
                                         ),
-                                        child: Text(
-                                          r.isApproved ? (r.isActive ? 'ACTIVE & APPROVED' : 'PAUSED') : 'PENDING REVIEW',
-                                          style: TextStyle(
-                                            color: r.isApproved ? (r.isActive ? AppColors.veg : Colors.grey) : Colors.orange.shade800,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 10,
-                                          ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(r.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                            const SizedBox(height: 2),
+                                            Text('${r.cuisine} • Rating: ${r.rating} ⭐', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                                            const SizedBox(height: 4),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: r.isApproved
+                                                    ? (r.isActive ? AppColors.veg.withValues(alpha: 0.15) : Colors.grey.withValues(alpha: 0.15))
+                                                    : Colors.orange.withValues(alpha: 0.15),
+                                                borderRadius: BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                r.isApproved ? (r.isActive ? 'ACTIVE & APPROVED' : 'PAUSED') : 'PENDING REVIEW',
+                                                style: TextStyle(
+                                                  color: r.isApproved ? (r.isActive ? AppColors.veg : Colors.grey) : Colors.orange.shade800,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 10,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                     ],
                                   ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            const Divider(height: 1),
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                if (!r.isApproved) ...[
-                                  OutlinedButton(
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: AppColors.error,
-                                      side: const BorderSide(color: AppColors.error),
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                    ),
-                                    onPressed: () => _rejectRestaurant(r.id),
-                                    child: const Text('Reject', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  ElevatedButton(
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppColors.veg,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                                    ),
-                                    onPressed: () => _approveRestaurant(r.id),
-                                    child: const Text('Approve Store', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                  ),
-                                ] else ...[
-                                  Text(
-                                    r.isActive ? 'Accepting Orders' : 'Store Disabled',
-                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Switch(
-                                    value: r.isActive,
-                                    activeThumbColor: AppColors.veg,
-                                    onChanged: (v) => _toggleRestaurantActive(r.id),
+                                  const SizedBox(height: 10),
+                                  const Divider(height: 1),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      if (!r.isApproved) ...[
+                                        OutlinedButton(
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: AppColors.error,
+                                            side: const BorderSide(color: AppColors.error),
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                          ),
+                                          onPressed: () => _rejectRestaurant(r.id),
+                                          child: const Text('Reject', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: AppColors.veg,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                                          ),
+                                          onPressed: () => _approveRestaurant(r.id),
+                                          child: const Text('Approve Store', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                        ),
+                                      ] else ...[
+                                        Text(
+                                          r.isActive ? 'Accepting Orders' : 'Store Disabled',
+                                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Switch(
+                                          value: r.isActive,
+                                          activeThumbColor: AppColors.veg,
+                                          onChanged: (v) => _toggleRestaurantActive(r.id),
+                                        ),
+                                      ],
+                                    ],
                                   ),
                                 ],
-                              ],
+                              ),
                             ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-              loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-              error: (err, _) => Center(child: Text('Error: $err')),
+                          );
+                        },
+                      );
+                    },
+                    loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                    error: (err, _) => Center(child: Text('Error: $err')),
+                  ),
+                ),
+              ],
             ),
           ),
 

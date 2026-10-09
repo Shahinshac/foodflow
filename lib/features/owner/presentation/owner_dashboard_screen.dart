@@ -25,8 +25,7 @@ final ownerOrdersProvider = FutureProvider<List<OrderModel>>((ref) async {
 
 final ownerFoodsProvider = FutureProvider<List<FoodItemModel>>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
-  final rest = await ref.watch(ownerRestaurantProvider.future);
-  final response = await apiClient.dio.get('/restaurants/${rest.id}/foods');
+  final response = await apiClient.dio.get('/owner/foods');
   return (response.data as List).map((e) => FoodItemModel.fromJson(e)).toList();
 });
 
