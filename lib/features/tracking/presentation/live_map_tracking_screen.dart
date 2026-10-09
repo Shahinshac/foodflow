@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../auth/presentation/auth_providers.dart';
 
 class LiveTrackingData {
@@ -254,7 +255,7 @@ class _LiveMapTrackingScreenState extends ConsumerState<LiveMapTrackingScreen> {
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF5722),
+                    backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -306,7 +307,7 @@ class _LiveMapTrackingScreenState extends ConsumerState<LiveMapTrackingScreen> {
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: Color(0xFFFF5722)))
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
           : _errorMessage != null
               ? Center(
                   child: Column(
@@ -353,7 +354,7 @@ class _LiveMapTrackingScreenState extends ConsumerState<LiveMapTrackingScreen> {
                           data.deliveryLocation,
                         ],
                         strokeWidth: 4.0,
-                        color: const Color(0xFFFF5722),
+                        color: AppColors.primary,
                       ),
                     ],
                   ),
@@ -401,7 +402,7 @@ class _LiveMapTrackingScreenState extends ConsumerState<LiveMapTrackingScreen> {
                             angle: data.riderHeading * (3.14159 / 180.0),
                             child: Container(
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFF5722),
+                                color: AppColors.primary,
                                 shape: BoxShape.circle,
                                 border: Border.all(color: Colors.white, width: 2),
                                 boxShadow: [
@@ -443,7 +444,7 @@ class _LiveMapTrackingScreenState extends ConsumerState<LiveMapTrackingScreen> {
                             style: const TextStyle(
                               fontSize: 17,
                               fontWeight: FontWeight.w900,
-                              color: Color(0xFFFF5722),
+                              color: AppColors.primary,
                             ),
                           ),
                           Text(
@@ -455,10 +456,10 @@ class _LiveMapTrackingScreenState extends ConsumerState<LiveMapTrackingScreen> {
                       Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFF5722).withValues(alpha: 0.1),
+                          color: AppColors.primary.withValues(alpha: 0.1),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.directions_bike_rounded, color: Color(0xFFFF5722), size: 24),
+                        child: const Icon(Icons.directions_bike_rounded, color: AppColors.primary, size: 24),
                       ),
                     ],
                   ),
@@ -500,7 +501,7 @@ class _LiveMapTrackingScreenState extends ConsumerState<LiveMapTrackingScreen> {
                       child: Row(
                         children: [
                           const CircleAvatar(
-                            backgroundColor: Color(0xFFFF5722),
+                            backgroundColor: AppColors.primary,
                             child: Icon(Icons.person, color: Colors.white),
                           ),
                           const SizedBox(width: 12),

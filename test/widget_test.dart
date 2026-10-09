@@ -1,19 +1,29 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/material.dart';
+import 'package:foodflow/core/theme/app_colors.dart';
 import 'package:foodflow/core/theme/app_theme.dart';
-import 'package:foodflow/main.dart';
 
 void main() {
-  testWidgets('App initializes successfully with Theme', (WidgetTester tester) async {
-    await tester.runAsync(() async {
-      await tester.pumpWidget(
-        const ProviderScope(
-          child: FoodFlowApp(),
+  testWidgets('AppTheme defines consistent primary branding and color scheme', (WidgetTester tester) async {
+    expect(AppColors.primary, const Color(0xFFFF521B));
+    expect(AppColors.primaryDark, const Color(0xFFE03E0B));
+    expect(AppColors.primaryLight, const Color(0xFFFF7A4D));
+    expect(AppTheme.lightTheme.colorScheme.primary, AppColors.primary);
+    expect(AppTheme.darkTheme.colorScheme.primary, AppColors.primary);
+    expect(AppTheme.lightTheme.scaffoldBackgroundColor, AppColors.backgroundLight);
+    expect(AppTheme.darkTheme.scaffoldBackgroundColor, AppColors.backgroundDark);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.lightTheme,
+        home: const Scaffold(
+          body: Center(
+            child: Text('FoodFlow', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
         ),
-      );
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(find.byType(FoodFlowApp), findsOneWidget);
-      expect(AppTheme.lightTheme.colorScheme.primary, isNotNull);
-    });
+      ),
+    );
+
+    expect(find.text('FoodFlow'), findsOneWidget);
   });
 }

@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../cart/presentation/cart_providers.dart';
 import 'restaurant_providers.dart';
@@ -32,7 +33,7 @@ class RestaurantDetailScreen extends ConsumerWidget {
               SliverAppBar(
                 expandedHeight: 260,
                 pinned: true,
-                backgroundColor: const Color(0xFFFF5722),
+                backgroundColor: AppColors.primary,
                 surfaceTintColor: Colors.transparent,
                 iconTheme: const IconThemeData(color: Colors.white),
                 leading: IconButton(
@@ -166,7 +167,7 @@ class RestaurantDetailScreen extends ConsumerWidget {
                   padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
                   child: Row(
                     children: [
-                      const Icon(Icons.restaurant_menu_rounded, color: Color(0xFFFF5722)),
+                      const Icon(Icons.restaurant_menu_rounded, color: AppColors.primary),
                       const SizedBox(width: 8),
                       const Text(
                         'Menu Items',
@@ -295,8 +296,8 @@ class RestaurantDetailScreen extends ConsumerWidget {
                                       ElevatedButton(
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: Colors.white,
-                                          foregroundColor: const Color(0xFFFF5722),
-                                          side: const BorderSide(color: Color(0xFFFF5722), width: 1.5),
+                                          foregroundColor: AppColors.primary,
+                                          side: const BorderSide(color: AppColors.primary, width: 1.5),
                                           elevation: 0,
                                           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                                           shape: RoundedRectangleBorder(
@@ -360,7 +361,7 @@ class RestaurantDetailScreen extends ConsumerWidget {
             ],
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFFFF5722))),
+        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
         error: (err, stack) => Center(child: Text('Error: $err')),
       ),
       
@@ -370,13 +371,9 @@ class RestaurantDetailScreen extends ConsumerWidget {
           return Container(
             margin: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFFF5722), Color(0xFFFF8A65)],
-              ),
+              gradient: AppColors.primaryGradient,
               borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(color: const Color(0xFFFF5722).withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 4)),
-              ],
+              boxShadow: AppColors.primaryGlow,
             ),
             child: Material(
               color: Colors.transparent,

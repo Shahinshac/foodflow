@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../../../core/theme/app_colors.dart';
 import 'auth_providers.dart';
 
 class AddressItem {
@@ -92,7 +93,7 @@ class ProfileScreen extends ConsumerWidget {
                       child: ChoiceChip(
                         label: Text(label),
                         selected: isSel,
-                        selectedColor: const Color(0xFFFF5722),
+                        selectedColor: AppColors.primary,
                         labelStyle: TextStyle(
                           color: isSel ? Colors.white : Colors.black87,
                           fontWeight: FontWeight.bold,
@@ -143,6 +144,12 @@ class ProfileScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 24),
                 ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
                   onPressed: () async {
                     if (formKey.currentState!.validate()) {
                       try {
@@ -162,7 +169,7 @@ class ProfileScreen extends ConsumerWidget {
                       } catch (e) {
                         if (ctx.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Failed to save address: $e')),
+                            SnackBar(content: Text('Failed to save address: $e'), backgroundColor: AppColors.error),
                           );
                         }
                       }
@@ -186,7 +193,7 @@ class ProfileScreen extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete address: $e')),
+          SnackBar(content: Text('Failed to delete address: $e'), backgroundColor: AppColors.error),
         );
       }
     }
@@ -197,12 +204,13 @@ class ProfileScreen extends ConsumerWidget {
     final authState = ref.watch(authProvider);
     final user = authState.user;
     final addressesAsync = ref.watch(userAddressesProvider);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
+      backgroundColor: isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
       appBar: AppBar(
         title: const Text('My Profile', style: TextStyle(fontWeight: FontWeight.w900)),
-        backgroundColor: Colors.white,
+        backgroundColor: isDark ? AppColors.surfaceDark : Colors.white,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
       ),
@@ -216,15 +224,9 @@ class ProfileScreen extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: isDark ? AppColors.surfaceDark : Colors.white,
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+                boxShadow: AppColors.softShadow,
               ),
               child: Row(
                 children: [
@@ -232,9 +234,7 @@ class ProfileScreen extends ConsumerWidget {
                     width: 64,
                     height: 64,
                     decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Color(0xFFFF5722), Color(0xFFFF8A65)],
-                      ),
+                      gradient: AppColors.primaryGradient,
                       shape: BoxShape.circle,
                     ),
                     child: Center(
@@ -255,24 +255,31 @@ class ProfileScreen extends ConsumerWidget {
                       children: [
                         Text(
                           user?.fullName ?? 'FoodFlow User',
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           user?.email ?? '',
-                          style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                          style: TextStyle(
+                            color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                            fontSize: 13,
+                          ),
                         ),
                         const SizedBox(height: 6),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFF5722).withValues(alpha: 0.1),
+                            color: AppColors.primary.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
                             user?.role ?? 'CUSTOMER',
                             style: const TextStyle(
-                              color: Color(0xFFFF5722),
+                              color: AppColors.primary,
                               fontSize: 11,
                               fontWeight: FontWeight.w800,
                             ),
@@ -290,14 +297,19 @@ class ProfileScreen extends ConsumerWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
+                Text(
                   'Saved Addresses',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: -0.5),
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                    color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
+                  ),
                 ),
                 TextButton.icon(
                   onPressed: () => _showAddAddressDialog(context, ref),
-                  icon: const Icon(Icons.add, size: 18, color: Color(0xFFFF5722)),
-                  label: const Text('Add New', style: TextStyle(color: Color(0xFFFF5722), fontWeight: FontWeight.bold)),
+                  icon: const Icon(Icons.add, size: 18, color: AppColors.primary),
+                  label: const Text('Add New', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
                 ),
               ],
             ).animate().fadeIn(delay: 100.ms),
@@ -310,14 +322,21 @@ class ProfileScreen extends ConsumerWidget {
                     width: double.infinity,
                     padding: const EdgeInsets.all(28),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: isDark ? AppColors.surfaceDark : Colors.white,
                       borderRadius: BorderRadius.circular(16),
+                      boxShadow: AppColors.softShadow,
                     ),
                     child: Column(
                       children: [
-                        Icon(Icons.location_off_outlined, size: 48, color: Colors.grey.shade400),
+                        Icon(Icons.location_off_outlined, size: 48, color: isDark ? AppColors.textMutedDark : AppColors.textMutedLight),
                         const SizedBox(height: 12),
-                        Text('No saved addresses yet', style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+                        Text(
+                          'No saved addresses yet',
+                          style: TextStyle(
+                            color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ],
                     ),
                   );
@@ -332,52 +351,59 @@ class ProfileScreen extends ConsumerWidget {
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: isDark ? AppColors.surfaceDark : Colors.white,
                         borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.02),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
+                        boxShadow: AppColors.softShadow,
                       ),
                       child: ListTile(
                         leading: Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: Colors.grey.shade100,
+                            color: AppColors.primary.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: Icon(
                             addr.label == 'HOME'
                                 ? Icons.home_rounded
                                 : (addr.label == 'WORK' ? Icons.work_rounded : Icons.location_on_rounded),
-                            color: const Color(0xFFFF5722),
+                            color: AppColors.primary,
                           ),
                         ),
                         title: Row(
                           children: [
-                            Text(addr.label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            Text(
+                              addr.label,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: isDark ? AppColors.textPrimaryDark : AppColors.textPrimaryLight,
+                              ),
+                            ),
                             if (addr.isDefault) ...[
                               const SizedBox(width: 8),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  color: Colors.green.shade50,
+                                  color: AppColors.veg.withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
-                                child: Text('DEFAULT', style: TextStyle(color: Colors.green.shade700, fontSize: 10, fontWeight: FontWeight.bold)),
+                                child: const Text(
+                                  'DEFAULT',
+                                  style: TextStyle(color: AppColors.veg, fontSize: 10, fontWeight: FontWeight.bold),
+                                ),
                               ),
                             ],
                           ],
                         ),
                         subtitle: Text(
                           '${addr.streetAddress}, ${addr.city} ${addr.pincode}',
-                          style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                          style: TextStyle(
+                            color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                            fontSize: 13,
+                          ),
                         ),
                         trailing: IconButton(
-                          icon: Icon(Icons.delete_outline, color: Colors.red.shade400, size: 20),
+                          icon: const Icon(Icons.delete_outline, color: AppColors.error, size: 20),
                           onPressed: () => _deleteAddress(context, ref, addr.id),
                         ),
                       ),
@@ -385,7 +411,7 @@ class ProfileScreen extends ConsumerWidget {
                   },
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator(color: Color(0xFFFF5722))),
+              loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
               error: (err, _) => Text('Error loading addresses: $err'),
             ),
             const SizedBox(height: 36),
@@ -395,8 +421,8 @@ class ProfileScreen extends ConsumerWidget {
               width: double.infinity,
               child: OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red.shade700,
-                  side: BorderSide(color: Colors.red.shade200),
+                  foregroundColor: AppColors.error,
+                  side: const BorderSide(color: AppColors.error),
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
