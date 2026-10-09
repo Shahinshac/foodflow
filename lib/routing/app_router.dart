@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/auth/presentation/auth_providers.dart';
@@ -13,6 +14,30 @@ import '../features/owner/presentation/owner_dashboard_screen.dart';
 import '../features/delivery/presentation/delivery_dashboard_screen.dart';
 import '../features/admin/presentation/admin_dashboard_screen.dart';
 import '../features/tracking/presentation/live_map_tracking_screen.dart';
+
+CustomTransitionPage<void> _buildPageWithTransition({
+  required BuildContext context,
+  required GoRouterState state,
+  required Widget child,
+}) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: const Duration(milliseconds: 280),
+    reverseTransitionDuration: const Duration(milliseconds: 240),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final curvedAnimation = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
+      return FadeTransition(
+        opacity: curvedAnimation,
+        child: child,
+      );
+    },
+  );
+}
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authProvider);
@@ -57,68 +82,128 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(
         path: '/splash',
-        builder: (context, state) => const SplashScreen(),
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const SplashScreen(),
+        ),
       ),
       GoRoute(
         path: '/',
-        builder: (context, state) => const HomeScreen(),
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const HomeScreen(),
+        ),
       ),
       GoRoute(
         path: '/login',
-        builder: (context, state) => const LoginScreen(),
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const LoginScreen(),
+        ),
       ),
       GoRoute(
         path: '/register',
-        builder: (context, state) => const RegisterScreen(),
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const RegisterScreen(),
+        ),
       ),
       GoRoute(
         path: '/admin',
-        builder: (context, state) => const LoginScreen(),
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const LoginScreen(),
+        ),
       ),
       GoRoute(
         path: '/restaurant-login',
-        builder: (context, state) => const LoginScreen(),
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const LoginScreen(),
+        ),
       ),
       GoRoute(
         path: '/delivery-login',
-        builder: (context, state) => const LoginScreen(),
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const LoginScreen(),
+        ),
       ),
       GoRoute(
         path: '/owner-dashboard',
-        builder: (context, state) => const OwnerDashboardScreen(),
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const OwnerDashboardScreen(),
+        ),
       ),
       GoRoute(
         path: '/delivery-dashboard',
-        builder: (context, state) => const DeliveryDashboardScreen(),
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const DeliveryDashboardScreen(),
+        ),
       ),
       GoRoute(
         path: '/admin-dashboard',
-        builder: (context, state) => const AdminDashboardScreen(),
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const AdminDashboardScreen(),
+        ),
       ),
       GoRoute(
         path: '/restaurant/:id',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final id = int.parse(state.pathParameters['id']!);
-          return RestaurantDetailScreen(restaurantId: id);
+          return _buildPageWithTransition(
+            context: context,
+            state: state,
+            child: RestaurantDetailScreen(restaurantId: id),
+          );
         },
       ),
       GoRoute(
         path: '/cart',
-        builder: (context, state) => const CartScreen(),
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const CartScreen(),
+        ),
       ),
       GoRoute(
         path: '/checkout',
-        builder: (context, state) => const CheckoutScreen(),
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const CheckoutScreen(),
+        ),
       ),
       GoRoute(
         path: '/orders',
-        builder: (context, state) => const OrdersListScreen(),
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const OrdersListScreen(),
+        ),
       ),
       GoRoute(
         path: '/order/:id',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final id = int.parse(state.pathParameters['id']!);
-          return LiveMapTrackingScreen(orderId: id);
+          return _buildPageWithTransition(
+            context: context,
+            state: state,
+            child: LiveMapTrackingScreen(orderId: id),
+          );
         },
       ),
     ],

@@ -119,3 +119,18 @@ Tested live locally on Chrome Web Engine (`http://127.0.0.1:8080`):
 | **Owner Modal** | Desktop / Mobile | Opens multi-step owner application dialog | 0 Errors | **PASS** |
 | **Accessibility Tree** | All Viewports | `flt-semantics` tree correctly exposed for screen readers | 0 Errors | **PASS** |
 
+---
+
+## 5. Animation Audit, Polish & Motion Quality
+
+| Animation Component | Before Audit | Refinement & Polish Applied | Verified Result |
+|---|---|---|---|
+| **Splash Screen Branding** | Off-center glow on wide screens, hardcoded media query positions | Dynamic centering with `Alignment.center`, responsive `LayoutBuilder` scaling, easing curve `Curves.easeOutBack` | Perfectly centered on all devices, smooth transition to `/login` |
+| **Route Transitions** | Instant/default page pop | Standardized `CustomTransitionPage` with `Curves.easeOutCubic` fade transition across all routes | Smooth, cohesive navigation |
+| **Card & Button Micro-Interactions** | Static card taps | `ScaleTap` spring feedback (0.96 scale down) with tactile response | Responsive, tactile feel |
+| **Live Order Route & Status** | Standard text badge | Animated slide and polyline render with `Curves.easeOutCubic` | Real-time visual clarity |
+| **Restaurant Menu Stagger** | Abrupt list appearance | Staggered fade and slide entrance (`(index * 60).ms`) | Fluid, non-blocking list reveal |
+| **Shimmer & Skeleton Loaders** | Static spinners | Shimmer sweep gradient (`AppColors.primaryLight`) during async fetch | Elegant loading experience |
+
+
+
