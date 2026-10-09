@@ -699,3 +699,150 @@ def test_owner_authorization_isolation():
     assert rest1.name == "Rest One"
 
     db.close()
+
+
+def test_end_to_end_cross_role_order_lifecycle():
+    db = TestingSessionLocal()
+    # 1. Admin Setup
+    admin = User(
+        email="super_admin_e2e@foodflow.com",
+        hashed_password=get_password_hash("adminpass123"),
+        full_name="Super Admin E2E",
+        role=UserRole.ADMIN,
+        is_active=True,
+        is_approved=True
+    )
+    # 2. Owner Setup with Active Restaurant
+    owner = User(
+        email="e2e_chef@foodflow.com",
+        hashed_password=get_password_hash("chefpass123"),
+        full_name="Chef Ramesh",
+        role=UserRole.RESTAURANT_OWNER,
+        is_active=True,
+        is_approved=True
+    )
+    rest = Restaurant(
+        name="Grand Spice Palace",
+        cuisine="North Indian",
+        delivery_fee_paise=3500,
+        min_order_paise=15000,
+        is_approved=True,
+        is_active=True,
+        is_open=True
+    )
+    # 3. Customer Setup
+    customer = User(
+        email="e2e_diner@foodflow.com",
+        hashed_password=get_password_hash("dinerpass123"),
+        full_name="Priya Diner",
+        role=UserRole.CUSTOMER,
+        is_active=True,
+        is_approved=True
+    )
+    # 4. Delivery Partner Setup
+    driver_user = User(
+        email="e2e_rider@foodflow.com",
+        hashed_password=get_password_hash("riderpass123"),
+        full_name="Ravi Rider",
+        role=UserRole.DELIVERY_PARTNER,
+        is_active=True,
+        is_approved=True
+    )
+    db.add_all([admin, owner, rest, customer, driver_user])
+    db.commit()
+    db.refresh(owner)
+    db.refresh(rest)
+    db.refresh(driver_user)
+    
+    rest.owner_id = owner.id
+    driver_profile = DeliveryPartner(
+        user_id=driver_user.id,
+        vehicle_type="Motorcycle",
+        vehicle_number="KA-05-AB-9999",
+        is_online=True,
+        is_verified=True
+    )
+    db.add(driver_profile)
+    db.commit()
+
+    # Log in all four roles
+    adm_token = client.post("/auth/login", data={"username": "super_admin_e2e@foodflow.com", "password": "adminpass123"}).json()["access_token"]
+    adm_headers = {"Authorization": f"Bearer {adm_token}"}
+
+    own_token = client.post("/auth/login", data={"username": "e2e_chef@foodflow.com", "password": "chefpass123"}).json()["access_token"]
+    own_headers = {"Authorization": f"Bearer {own_token}"}
+
+    cst_token = client.post("/auth/login", data={"username": "e2e_diner@foodflow.com", "password": "dinerpass123"}).json()["access_token"]
+    cst_headers = {"Authorization": f"Bearer {cst_token}"}
+
+    drw_token = client.post("/auth/login", data={"username": "e2e_rider@foodflow.com", "password": "riderpass123"}).json()["access_token"]
+    drw_headers = {"Authorization": f"Bearer {drw_token}"}
+
+    # Step 1: Owner adds food item
+    food_resp = client.post(
+        "/owner/foods",
+        json={
+            "name": "Kadhai Paneer Special",
+            "description": "Rich cottage cheese in spicy kadhai gravy",
+            "price_paise": 28000,
+            "is_veg": True,
+            "is_available": True
+        },
+        headers=own_headers
+    )
+    assert food_resp.status_code == 200
+    food_id = food_resp.json()["id"]
+
+    # Step 2: Customer adds to cart & checks out
+    client.post("/cart/items", json={"food_item_id": food_id, "quantity": 2}, headers=cst_headers)
+    order_resp = client.post(
+        "/orders",
+        json={"delivery_address": "Apartment 5B, Lotus Park", "payment_method": "COD"},
+        headers=cst_headers
+    )
+    assert order_resp.status_code == 200
+    order_id = order_resp.json()["id"]
+    assert order_resp.json()["status"] == "PLACED" or order_resp.json()["status"] == "CONFIRMED"
+
+    # Step 3: Owner transitions order to RESTAURANT_CONFIRMED -> PREPARING -> READY_FOR_PICKUP
+    client.put(f"/owner/orders/{order_id}/status", json={"status": "RESTAURANT_CONFIRMED"}, headers=own_headers)
+    client.put(f"/owner/orders/{order_id}/status", json={"status": "PREPARING"}, headers=own_headers)
+    ready_resp = client.put(f"/owner/orders/{order_id}/status", json={"status": "READY_FOR_PICKUP"}, headers=own_headers)
+    assert ready_resp.status_code == 200
+
+    # Step 4: Driver gets available orders & assigns
+    avail = client.get("/delivery/available-orders", headers=drw_headers)
+    assert avail.status_code == 200
+    assignments = avail.json()
+    assert len(assignments) >= 1
+    assignment_id = assignments[0]["id"]
+
+    # Step 5: Driver updates status to ARRIVED_AT_RESTAURANT -> PICKED_UP -> OUT_FOR_DELIVERY -> DELIVERED
+    client.put(f"/delivery/assignments/{assignment_id}/status", json={"status": "ARRIVED_AT_RESTAURANT"}, headers=drw_headers)
+    client.put(f"/delivery/assignments/{assignment_id}/status", json={"status": "PICKED_UP"}, headers=drw_headers)
+    client.put(f"/delivery/assignments/{assignment_id}/status", json={"status": "OUT_FOR_DELIVERY"}, headers=drw_headers)
+    
+    # Broadcast live location
+    client.put(f"/tracking/{order_id}/location", json={"rider_lat": 12.9352, "rider_lng": 77.6245, "rider_heading": 90.0}, headers=drw_headers)
+    
+    deliv_resp = client.put(f"/delivery/assignments/{assignment_id}/status", json={"status": "DELIVERED"}, headers=drw_headers)
+    assert deliv_resp.status_code == 200
+
+    # Step 6: Customer confirms order status DELIVERED & writes review
+    cust_order = client.get(f"/orders/{order_id}", headers=cst_headers).json()
+    assert cust_order["status"] == "DELIVERED"
+
+    review_resp = client.post(
+        "/reviews",
+        json={"order_id": order_id, "restaurant_id": rest.id, "rating": 5.0, "comment": "Delicious food and prompt delivery!"},
+        headers=cst_headers
+    )
+    assert review_resp.status_code == 200
+
+    # Step 7: Admin inspects Executive Analytics
+    analytics = client.get("/admin/analytics", headers=adm_headers)
+    assert analytics.status_code == 200
+    assert analytics.json()["total_orders"] >= 1
+
+    db.close()
+
