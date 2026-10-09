@@ -9,11 +9,11 @@ from ..models import (
     AuditLog, UserRole
 )
 from ..schemas import (
-    UserResponse, RestaurantResponse, DeliveryPartnerResponse,
+    UserCreate, UserResponse, RestaurantResponse, DeliveryPartnerResponse,
     OrderResponse, CouponCreate, CouponResponse, CouponAnalyticsResponse,
     AdminMetricsResponse, AdminAnalyticsResponse
 )
-from ..auth import require_admin
+from ..auth import require_admin, get_password_hash
 
 router = APIRouter(prefix="/admin", tags=["Admin Panel & Promotion Engine"])
 
@@ -101,6 +101,39 @@ def get_all_users(
 ):
     return db.query(User).order_by(User.created_at.desc()).all()
 
+@router.post("/users", response_model=UserResponse)
+def create_user_by_admin(
+    user_in: UserCreate,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    existing = db.query(User).filter(User.email == user_in.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    user = User(
+        email=user_in.email,
+        full_name=user_in.full_name,
+        phone=user_in.phone,
+        role=user_in.role or UserRole.CUSTOMER,
+        hashed_password=get_password_hash(user_in.password),
+        is_active=True,
+        is_approved=True,
+        created_at=datetime.utcnow()
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    log = AuditLog(
+        admin_id=current_user.id,
+        action="CREATE_USER",
+        details=f"Created user {user.email} with role {user.role.value}"
+    )
+    db.add(log)
+    db.commit()
+    return user
+
 @router.put("/users/{user_id}/toggle-active", response_model=UserResponse)
 def toggle_user_active(
     user_id: int,
@@ -147,6 +180,51 @@ def approve_restaurant(
         admin_id=current_user.id,
         action="APPROVE_RESTAURANT",
         details=f"Approved restaurant {rest.name} (id={rest.id})"
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(rest)
+    return rest
+
+@router.put("/restaurants/{restaurant_id}/reject", response_model=RestaurantResponse)
+def reject_restaurant(
+    restaurant_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    rest = db.query(Restaurant).filter(Restaurant.id == restaurant_id).first()
+    if not rest:
+        raise HTTPException(status_code=404, detail="Restaurant not found")
+
+    rest.is_approved = False
+    rest.is_active = False
+
+    log = AuditLog(
+        admin_id=current_user.id,
+        action="REJECT_RESTAURANT",
+        details=f"Rejected restaurant {rest.name} (id={rest.id})"
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(rest)
+    return rest
+
+@router.put("/restaurants/{restaurant_id}/toggle-active", response_model=RestaurantResponse)
+def toggle_restaurant_active(
+    restaurant_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    rest = db.query(Restaurant).filter(Restaurant.id == restaurant_id).first()
+    if not rest:
+        raise HTTPException(status_code=404, detail="Restaurant not found")
+
+    rest.is_active = not rest.is_active
+
+    log = AuditLog(
+        admin_id=current_user.id,
+        action="TOGGLE_RESTAURANT_ACTIVE",
+        details=f"Toggled restaurant {rest.name} (id={rest.id}) is_active to {rest.is_active}"
     )
     db.add(log)
     db.commit()

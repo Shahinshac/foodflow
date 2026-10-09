@@ -463,6 +463,196 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
     );
   }
 
+  void _showOnboardRestaurantDialog() {
+    final formKey = GlobalKey<FormState>();
+    final nameCtrl = TextEditingController();
+    final cuisineCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
+    final addressCtrl = TextEditingController();
+    final delFeeCtrl = TextEditingController(text: '30');
+    final minOrderCtrl = TextEditingController(text: '100');
+    final estTimeCtrl = TextEditingController(text: '25-35 min');
+    String? uploadedImageUrl;
+    bool isUploading = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Container(
+          padding: EdgeInsets.only(
+            top: 24,
+            left: 24,
+            right: 24,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Register Your Restaurant', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                      IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(labelText: 'Restaurant Name', hintText: 'e.g. Royal Biryani House'),
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Name required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: cuisineCtrl,
+                    decoration: const InputDecoration(labelText: 'Cuisines Offered', hintText: 'e.g. Biryani, North Indian, Kebabs'),
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Cuisines required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: descCtrl,
+                    decoration: const InputDecoration(labelText: 'Short Description', hintText: 'e.g. Authentic aromatic Dum Biryanis'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: addressCtrl,
+                    decoration: const InputDecoration(labelText: 'Complete Address / Location', hintText: 'e.g. Shop 4B, 100ft Road, Indiranagar'),
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Address required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: delFeeCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(labelText: 'Delivery Fee (₹)', prefixText: '₹ '),
+                          validator: (v) => v == null || double.tryParse(v) == null ? 'Fee required' : null,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: minOrderCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(labelText: 'Min Order (₹)', prefixText: '₹ '),
+                          validator: (v) => v == null || double.tryParse(v) == null ? 'Min order required' : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: estTimeCtrl,
+                    decoration: const InputDecoration(labelText: 'Estimated Delivery Time', hintText: 'e.g. 25-35 min'),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      OutlinedButton.icon(
+                        icon: isUploading
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.add_a_photo_outlined),
+                        label: Text(uploadedImageUrl != null ? 'Banner Photo Attached' : 'Attach Cover Photo'),
+                        onPressed: isUploading
+                            ? null
+                            : () async {
+                                final picker = ImagePicker();
+                                final img = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+                                if (img != null) {
+                                  setModalState(() => isUploading = true);
+                                  try {
+                                    final uploadRepo = ref.read(uploadRepositoryProvider);
+                                    final url = await uploadRepo.uploadImage(img);
+                                    setModalState(() {
+                                      uploadedImageUrl = url;
+                                      isUploading = false;
+                                    });
+                                  } catch (e) {
+                                    setModalState(() => isUploading = false);
+                                    if (ctx.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Upload failed: $e'), backgroundColor: AppColors.error),
+                                      );
+                                    }
+                                  }
+                                }
+                              },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: () async {
+                        if (formKey.currentState!.validate()) {
+                          try {
+                            final delFeePaise = (double.parse(delFeeCtrl.text.trim()) * 100).toInt();
+                            final minOrderPaise = (double.parse(minOrderCtrl.text.trim()) * 100).toInt();
+
+                            final apiClient = ref.read(apiClientProvider);
+                            await apiClient.dio.post(
+                              '/owner/restaurant',
+                              data: {
+                                'name': nameCtrl.text.trim(),
+                                'cuisine': cuisineCtrl.text.trim(),
+                                'description': descCtrl.text.trim(),
+                                'address_text': addressCtrl.text.trim(),
+                                'delivery_fee_paise': delFeePaise,
+                                'min_order_paise': minOrderPaise,
+                                'estimated_delivery_time': estTimeCtrl.text.trim(),
+                                'image_url': uploadedImageUrl,
+                                'is_open': true,
+                                'prep_time_minutes': 25,
+                              },
+                            );
+                            ref.invalidate(ownerRestaurantProvider);
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Restaurant profile submitted! Awaiting Admin approval.'),
+                                  backgroundColor: AppColors.veg,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Submission failed: $e'), backgroundColor: AppColors.error),
+                              );
+                            }
+                          }
+                        }
+                      },
+                      child: const Text('Submit Restaurant for Review', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final restaurantAsync = ref.watch(ownerRestaurantProvider);
@@ -471,43 +661,130 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
     final promosAsync = ref.watch(ownerPromotionsProvider);
     final analyticsAsync = ref.watch(ownerAnalyticsProvider);
 
-    return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
-        title: const Text('Restaurant Partner Portal', style: TextStyle(fontWeight: FontWeight.w900)),
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            onPressed: () => NotificationSheet.show(context),
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout_rounded),
-            onPressed: () => ref.read(authProvider.notifier).logout(),
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: AppColors.primary,
-          unselectedLabelColor: Colors.grey.shade600,
-          indicatorColor: AppColors.primary,
-          isScrollable: true,
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-          tabs: const [
-            Tab(icon: Icon(Icons.receipt_long_rounded), text: 'Live Orders'),
-            Tab(icon: Icon(Icons.restaurant_menu_rounded), text: 'Menu Items'),
-            Tab(icon: Icon(Icons.local_offer_rounded), text: 'Offers'),
-            Tab(icon: Icon(Icons.insights_rounded), text: 'Analytics'),
-            Tab(icon: Icon(Icons.storefront_rounded), text: 'Store Controls'),
+    return restaurantAsync.when(
+      loading: () => Scaffold(
+        backgroundColor: Colors.grey.shade50,
+        appBar: AppBar(
+          title: const Text('Restaurant Partner Portal', style: TextStyle(fontWeight: FontWeight.w900)),
+          backgroundColor: Colors.white,
+          elevation: 0,
+        ),
+        body: const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      ),
+      error: (err, _) => Scaffold(
+        backgroundColor: Colors.grey.shade50,
+        appBar: AppBar(
+          title: const Text('Restaurant Partner Portal', style: TextStyle(fontWeight: FontWeight.w900)),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.logout_rounded),
+              onPressed: () => ref.read(authProvider.notifier).logout(),
+            ),
           ],
         ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.storefront_rounded, size: 72, color: AppColors.primary),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Welcome to FoodFlow Partner',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'No restaurant is associated with this account yet. Register your restaurant details to submit for Super Admin approval and start receiving orders.',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 14, height: 1.4),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton.icon(
+                  onPressed: _showOnboardRestaurantDialog,
+                  icon: const Icon(Icons.add_business_rounded),
+                  label: const Text('Register Restaurant Profile', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 15),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          // TAB 1: LIVE ORDERS
+      data: (restaurant) => Scaffold(
+        backgroundColor: Colors.grey.shade50,
+        appBar: AppBar(
+          title: Text(restaurant.name, style: const TextStyle(fontWeight: FontWeight.w900)),
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.notifications_outlined),
+              onPressed: () => NotificationSheet.show(context),
+            ),
+            IconButton(
+              icon: const Icon(Icons.logout_rounded),
+              onPressed: () => ref.read(authProvider.notifier).logout(),
+            ),
+          ],
+          bottom: TabBar(
+            controller: _tabController,
+            labelColor: AppColors.primary,
+            unselectedLabelColor: Colors.grey.shade600,
+            indicatorColor: AppColors.primary,
+            isScrollable: true,
+            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            tabs: const [
+              Tab(icon: Icon(Icons.receipt_long_rounded), text: 'Live Orders'),
+              Tab(icon: Icon(Icons.restaurant_menu_rounded), text: 'Menu Items'),
+              Tab(icon: Icon(Icons.local_offer_rounded), text: 'Offers'),
+              Tab(icon: Icon(Icons.insights_rounded), text: 'Analytics'),
+              Tab(icon: Icon(Icons.storefront_rounded), text: 'Store Controls'),
+            ],
+          ),
+        ),
+        body: Column(
+          children: [
+            if (!restaurant.isApproved)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                color: Colors.amber.shade100,
+                child: Row(
+                  children: [
+                    const Icon(Icons.hourglass_top_rounded, color: Colors.orange, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Store under review. Super Admin will verify and activate your restaurant soon.',
+                        style: TextStyle(color: Colors.brown.shade800, fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  // TAB 1: LIVE ORDERS
           RefreshIndicator(
             onRefresh: () async => ref.invalidate(ownerOrdersProvider),
             color: AppColors.primary,
@@ -952,110 +1229,136 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
           ),
 
           // TAB 5: STORE OPERATIONS & CONTROLS
-          restaurantAsync.when(
-            data: (restaurant) => SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Operations Controls Card
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: AppColors.softShadow,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Store Operating Status', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 16),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(restaurant.isOpen ? 'Currently Open & Accepting Orders' : 'Currently Closed'),
-                          subtitle: const Text('Toggle to pause or resume customer orders'),
-                          value: restaurant.isOpen,
-                          activeThumbColor: AppColors.veg,
-                          onChanged: (val) => _toggleStoreStatus(val),
-                        ),
-                        const Divider(),
-                        const SizedBox(height: 8),
-                        const Text('Average Prep Time', style: TextStyle(fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          children: [15, 20, 25, 30, 45].map((mins) {
-                            final isSel = restaurant.prepTimeMinutes == mins;
-                            return ChoiceChip(
-                              label: Text('$mins mins'),
-                              selected: isSel,
-                              selectedColor: AppColors.primary,
-                              labelStyle: TextStyle(color: isSel ? Colors.white : Colors.black87, fontWeight: FontWeight.bold),
-                              onSelected: (_) => _updatePrepTime(mins),
-                            );
-                          }).toList(),
-                        ),
-                      ],
-                    ),
+          SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Operations Controls Card
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: AppColors.softShadow,
                   ),
-                  const SizedBox(height: 20),
-                  // Store Profile Card
-                  Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: AppColors.softShadow,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ClipRRect(
-                          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                          child: CachedNetworkImage(
-                            imageUrl: AppConstants.resolveImageUrl(restaurant.imageUrl),
-                            height: 180,
-                            width: double.infinity,
-                            fit: BoxFit.cover,
-                          ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Store Operating Status', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 16),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(restaurant.isOpen ? 'Currently Open & Accepting Orders' : 'Currently Closed'),
+                        subtitle: const Text('Toggle to pause or resume customer orders'),
+                        value: restaurant.isOpen,
+                        activeThumbColor: AppColors.veg,
+                        onChanged: (val) => _toggleStoreStatus(val),
+                      ),
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      const Text('Average Prep Time', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        children: [15, 20, 25, 30, 45].map((mins) {
+                          final isSel = restaurant.prepTimeMinutes == mins;
+                          return ChoiceChip(
+                            label: Text('$mins mins'),
+                            selected: isSel,
+                            selectedColor: AppColors.primary,
+                            labelStyle: TextStyle(color: isSel ? Colors.white : Colors.black87, fontWeight: FontWeight.bold),
+                            onSelected: (_) => _updatePrepTime(mins),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // Store Profile Card
+                Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: AppColors.softShadow,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ClipRRect(
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                        child: CachedNetworkImage(
+                          imageUrl: AppConstants.resolveImageUrl(restaurant.imageUrl),
+                          height: 180,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
                         ),
-                        Padding(
-                          padding: const EdgeInsets.all(20.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(restaurant.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
-                              const SizedBox(height: 6),
-                              Text(restaurant.cuisine, style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
-                              const SizedBox(height: 16),
-                              Row(
-                                children: [
-                                  const Icon(Icons.star, color: Colors.amber, size: 20),
-                                  const SizedBox(width: 4),
-                                  Text('${restaurant.rating} Rating', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                  const SizedBox(width: 20),
-                                  const Icon(Icons.timer_outlined, color: Colors.grey, size: 18),
-                                  const SizedBox(width: 4),
-                                  Text(restaurant.estimatedDeliveryTime),
-                                ],
-                              ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(20.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Expanded(
+                                  child: Text(restaurant.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: restaurant.isApproved ? AppColors.veg.withValues(alpha: 0.15) : Colors.orange.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    restaurant.isApproved ? 'APPROVED' : 'UNDER REVIEW',
+                                    style: TextStyle(
+                                      color: restaurant.isApproved ? AppColors.veg : Colors.orange.shade800,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(restaurant.cuisine, style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
+                            if (restaurant.addressText != null) ...[
+                              const SizedBox(height: 4),
+                              Text(restaurant.addressText!, style: TextStyle(color: Colors.grey.shade500, fontSize: 12)),
                             ],
-                          ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                const Icon(Icons.star, color: Colors.amber, size: 20),
+                                const SizedBox(width: 4),
+                                Text('${restaurant.rating} Rating', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                const SizedBox(width: 20),
+                                const Icon(Icons.timer_outlined, color: Colors.grey, size: 18),
+                                const SizedBox(width: 4),
+                                Text(restaurant.estimatedDeliveryTime),
+                              ],
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-            error: (err, _) => Center(child: Text('No restaurant associated: $err')),
           ),
         ],
       ),
-    );
-  }
+    ),
+  ],
+),
+),
+);
+}
 
   Widget _buildMetricCard(String title, String value, IconData icon, Color color) {
     return Container(

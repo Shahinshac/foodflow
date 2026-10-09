@@ -105,6 +105,178 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
     }
   }
 
+  void _rejectRestaurant(int restaurantId) async {
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      await apiClient.dio.put('/admin/restaurants/$restaurantId/reject');
+      ref.invalidate(adminRestaurantsProvider);
+      ref.invalidate(adminAnalyticsProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Restaurant application rejected'), backgroundColor: AppColors.error),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to reject: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
+  }
+
+  void _toggleRestaurantActive(int restaurantId) async {
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      await apiClient.dio.put('/admin/restaurants/$restaurantId/toggle-active');
+      ref.invalidate(adminRestaurantsProvider);
+      ref.invalidate(adminAnalyticsProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Restaurant status updated'), backgroundColor: AppColors.veg),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update status: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
+  }
+
+  void _showCreateUserDialog() {
+    final formKey = GlobalKey<FormState>();
+    final nameCtrl = TextEditingController();
+    final emailCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
+    final passCtrl = TextEditingController();
+    String selectedRole = 'OWNER';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => Container(
+          padding: EdgeInsets.only(
+            top: 24,
+            left: 24,
+            right: 24,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Add New Account / Partner', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                      IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedRole,
+                    decoration: const InputDecoration(labelText: 'Account Role'),
+                    items: const [
+                      DropdownMenuItem(value: 'OWNER', child: Text('Hotel / Restaurant Owner')),
+                      DropdownMenuItem(value: 'DRIVER', child: Text('Delivery Partner / Driver')),
+                      DropdownMenuItem(value: 'CUSTOMER', child: Text('Customer')),
+                      DropdownMenuItem(value: 'ADMIN', child: Text('Administrator')),
+                    ],
+                    onChanged: (v) => setModalState(() => selectedRole = v ?? 'OWNER'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(labelText: 'Full Name', hintText: 'e.g. John Doe'),
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Name required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: emailCtrl,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(labelText: 'Email Address', hintText: 'e.g. owner@restaurant.com'),
+                    validator: (v) => v == null || !v.contains('@') ? 'Valid email required' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: phoneCtrl,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(labelText: 'Phone Number', hintText: 'e.g. 9876543210'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: passCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'Password', hintText: 'Min 6 characters'),
+                    validator: (v) => v == null || v.length < 6 ? 'Password min 6 chars' : null,
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: () async {
+                        if (formKey.currentState!.validate()) {
+                          try {
+                            final api = ref.read(apiClientProvider);
+                            await api.dio.post(
+                              '/admin/users',
+                              data: {
+                                'full_name': nameCtrl.text.trim(),
+                                'email': emailCtrl.text.trim().toLowerCase(),
+                                'phone': phoneCtrl.text.trim().isNotEmpty ? phoneCtrl.text.trim() : null,
+                                'password': passCtrl.text,
+                                'role': selectedRole,
+                              },
+                            );
+                            ref.invalidate(adminUsersProvider);
+                            ref.invalidate(adminAnalyticsProvider);
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('$selectedRole account created for ${emailCtrl.text.trim()}!'),
+                                  backgroundColor: AppColors.veg,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Failed to create account: $e'), backgroundColor: AppColors.error),
+                              );
+                            }
+                          }
+                        }
+                      },
+                      child: const Text('Create User Account', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showCampaignAnalytics(int promoId) async {
     try {
       final apiClient = ref.read(apiClientProvider);
@@ -649,43 +821,137 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
             onRefresh: () async => ref.invalidate(adminRestaurantsProvider),
             color: AppColors.primary,
             child: restaurantsAsync.when(
-              data: (restaurants) => ListView.builder(
-                padding: const EdgeInsets.all(16.0),
-                itemCount: restaurants.length,
-                itemBuilder: (context, index) {
-                  final r = restaurants[index];
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: AppColors.softShadow,
-                    ),
-                    child: ListTile(
-                      leading: ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: CachedNetworkImage(
-                          imageUrl: AppConstants.resolveImageUrl(r.imageUrl),
-                          width: 48,
-                          height: 48,
-                          fit: BoxFit.cover,
+              data: (restaurants) {
+                if (restaurants.isEmpty) {
+                  return ListView(
+                    padding: const EdgeInsets.all(24),
+                    children: [
+                      SizedBox(height: MediaQuery.of(context).size.height * 0.15),
+                      Center(
+                        child: Column(
+                          children: [
+                            Icon(Icons.storefront_outlined, size: 72, color: Colors.grey.shade300),
+                            const SizedBox(height: 16),
+                            const Text('No Restaurants Registered Yet', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Invite restaurant owners in the Users tab to register their hotels.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                            ),
+                          ],
                         ),
                       ),
-                      title: Text(r.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      subtitle: Text('${r.cuisine} • Rating: ${r.rating} ⭐', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
-                      trailing: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: r.isActive ? AppColors.veg : AppColors.primary,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        onPressed: () => _approveRestaurant(r.id),
-                        child: Text(r.isActive ? 'Active' : 'Approve', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                      ),
-                    ),
+                    ],
                   );
-                },
-              ),
+                }
+                return ListView.builder(
+                  padding: const EdgeInsets.all(16.0),
+                  itemCount: restaurants.length,
+                  itemBuilder: (context, index) {
+                    final r = restaurants[index];
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: AppColors.softShadow,
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: CachedNetworkImage(
+                                    imageUrl: AppConstants.resolveImageUrl(r.imageUrl),
+                                    width: 54,
+                                    height: 54,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(r.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                      const SizedBox(height: 2),
+                                      Text('${r.cuisine} • Rating: ${r.rating} ⭐', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                                      const SizedBox(height: 4),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: r.isApproved
+                                              ? (r.isActive ? AppColors.veg.withValues(alpha: 0.15) : Colors.grey.withValues(alpha: 0.15))
+                                              : Colors.orange.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          r.isApproved ? (r.isActive ? 'ACTIVE & APPROVED' : 'PAUSED') : 'PENDING REVIEW',
+                                          style: TextStyle(
+                                            color: r.isApproved ? (r.isActive ? AppColors.veg : Colors.grey) : Colors.orange.shade800,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            const Divider(height: 1),
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                if (!r.isApproved) ...[
+                                  OutlinedButton(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: AppColors.error,
+                                      side: const BorderSide(color: AppColors.error),
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    ),
+                                    onPressed: () => _rejectRestaurant(r.id),
+                                    child: const Text('Reject', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.veg,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                                    ),
+                                    onPressed: () => _approveRestaurant(r.id),
+                                    child: const Text('Approve Store', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                  ),
+                                ] else ...[
+                                  Text(
+                                    r.isActive ? 'Accepting Orders' : 'Store Disabled',
+                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Switch(
+                                    value: r.isActive,
+                                    activeThumbColor: AppColors.veg,
+                                    onChanged: (v) => _toggleRestaurantActive(r.id),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
               loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
               error: (err, _) => Center(child: Text('Error: $err')),
             ),
@@ -695,37 +961,77 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
           RefreshIndicator(
             onRefresh: () async => ref.invalidate(adminUsersProvider),
             color: AppColors.primary,
-            child: usersAsync.when(
-              data: (users) => ListView.builder(
-                padding: const EdgeInsets.all(16.0),
-                itemCount: users.length,
-                itemBuilder: (context, index) {
-                  final u = users[index];
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: AppColors.softShadow,
-                    ),
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-                        child: Text(u.fullName.isNotEmpty ? u.fullName[0].toUpperCase() : 'U', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('User Accounts', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
+                        label: const Text('Add Account', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        onPressed: _showCreateUserDialog,
                       ),
-                      title: Text(u.fullName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                      subtitle: Text('${u.email} • ${u.role}', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
-                      trailing: Switch(
-                        value: true,
-                        activeThumbColor: AppColors.veg,
-                        onChanged: (v) => _toggleUserActive(u.id),
-                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: usersAsync.when(
+                    data: (users) => ListView.builder(
+                      padding: const EdgeInsets.all(16.0),
+                      itemCount: users.length,
+                      itemBuilder: (context, index) {
+                        final u = users[index];
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: AppColors.softShadow,
+                          ),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+                              child: Text(u.fullName.isNotEmpty ? u.fullName[0].toUpperCase() : 'U', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+                            ),
+                            title: Text(u.fullName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(u.email, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                                const SizedBox(height: 2),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(u.role, style: const TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            ),
+                            trailing: Switch(
+                              value: u.isActive,
+                              activeThumbColor: AppColors.veg,
+                              onChanged: (v) => _toggleUserActive(u.id),
+                            ),
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
-              loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-              error: (err, _) => Center(child: Text('Error: $err')),
+                    loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                    error: (err, _) => Center(child: Text('Error: $err')),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

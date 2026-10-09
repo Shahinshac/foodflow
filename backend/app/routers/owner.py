@@ -55,10 +55,43 @@ def onboard_restaurant(
         opening_time=rest_in.opening_time,
         closing_time=rest_in.closing_time,
         prep_time_minutes=rest_in.prep_time_minutes,
-        is_active=True,
-        is_approved=True
+        is_active=False,
+        is_approved=False
     )
     db.add(restaurant)
+    db.commit()
+    db.refresh(restaurant)
+    return restaurant
+
+@router.put("/restaurant", response_model=RestaurantResponse)
+def update_restaurant_profile(
+    rest_in: RestaurantCreate,
+    current_user: User = Depends(require_restaurant_owner),
+    db: Session = Depends(get_db)
+):
+    restaurant = db.query(Restaurant).filter(Restaurant.owner_id == current_user.id).first()
+    if not restaurant:
+        raise HTTPException(status_code=404, detail="Restaurant not found")
+
+    restaurant.name = rest_in.name
+    restaurant.description = rest_in.description
+    restaurant.cuisine = rest_in.cuisine
+    if rest_in.image_url:
+        restaurant.image_url = rest_in.image_url
+    restaurant.delivery_fee_paise = rest_in.delivery_fee_paise
+    restaurant.min_order_paise = rest_in.min_order_paise
+    restaurant.estimated_delivery_time = rest_in.estimated_delivery_time
+    if rest_in.latitude is not None:
+        restaurant.latitude = rest_in.latitude
+    if rest_in.longitude is not None:
+        restaurant.longitude = rest_in.longitude
+    if rest_in.address_text:
+        restaurant.address_text = rest_in.address_text
+    restaurant.is_open = rest_in.is_open
+    restaurant.opening_time = rest_in.opening_time
+    restaurant.closing_time = rest_in.closing_time
+    restaurant.prep_time_minutes = rest_in.prep_time_minutes
+
     db.commit()
     db.refresh(restaurant)
     return restaurant

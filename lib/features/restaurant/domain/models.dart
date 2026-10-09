@@ -4,6 +4,8 @@ class UserModel {
   final String fullName;
   final String? phone;
   final String role;
+  final bool isActive;
+  final bool isApproved;
 
   UserModel({
     required this.id,
@@ -11,6 +13,8 @@ class UserModel {
     required this.fullName,
     this.phone,
     required this.role,
+    this.isActive = true,
+    this.isApproved = true,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -20,6 +24,8 @@ class UserModel {
       fullName: json['full_name'],
       phone: json['phone'],
       role: json['role'] ?? 'CUSTOMER',
+      isActive: json['is_active'] ?? true,
+      isApproved: json['is_approved'] ?? true,
     );
   }
 
@@ -29,6 +35,8 @@ class UserModel {
         'full_name': fullName,
         'phone': phone,
         'role': role,
+        'is_active': isActive,
+        'is_approved': isApproved,
       };
 }
 
@@ -44,6 +52,7 @@ class RestaurantModel {
   final int minOrderPaise;
   final String estimatedDeliveryTime;
   final bool isActive;
+  final bool isApproved;
   final bool isOpen;
   final int prepTimeMinutes;
   final String? addressText;
@@ -62,6 +71,7 @@ class RestaurantModel {
     required this.minOrderPaise,
     required this.estimatedDeliveryTime,
     required this.isActive,
+    this.isApproved = true,
     this.isOpen = true,
     this.prepTimeMinutes = 25,
     this.addressText,
@@ -82,6 +92,7 @@ class RestaurantModel {
       minOrderPaise: json['min_order_paise'] ?? 10000,
       estimatedDeliveryTime: json['estimated_delivery_time'] ?? '25-35 min',
       isActive: json['is_active'] ?? true,
+      isApproved: json['is_approved'] ?? true,
       isOpen: json['is_open'] ?? true,
       prepTimeMinutes: json['prep_time_minutes'] ?? 25,
       addressText: json['address_text'],
@@ -93,6 +104,8 @@ class RestaurantModel {
   RestaurantModel copyWith({
     bool? isFavorite,
     bool? isOpen,
+    bool? isActive,
+    bool? isApproved,
     int? activeOffersCount,
   }) {
     return RestaurantModel(
@@ -106,7 +119,8 @@ class RestaurantModel {
       deliveryFeePaise: deliveryFeePaise,
       minOrderPaise: minOrderPaise,
       estimatedDeliveryTime: estimatedDeliveryTime,
-      isActive: isActive,
+      isActive: isActive ?? this.isActive,
+      isApproved: isApproved ?? this.isApproved,
       isOpen: isOpen ?? this.isOpen,
       prepTimeMinutes: prepTimeMinutes,
       addressText: addressText,
