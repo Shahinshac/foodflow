@@ -98,6 +98,24 @@
 
 - **Backend PyTest (`pytest backend/tests/test_api.py -v`)**: 7/7 PASSED (100%)
 - **Static Analysis (`flutter analyze`)**: 0 issues (0 errors, 0 warnings, 0 infos)
-- **Widget Tests (`flutter test`)**: PASSED
+- **Widget & Unit Tests (`flutter test`)**: 6/6 PASSED (100%)
+- **Flutter Web Build (`flutter build web`)**: SUCCESS (Built in 65.3s)
 - **Android APK Build**: `build\app\outputs\flutter-apk\app-release.apk` (59.5 MB)
-- **Physical Device Install**: Installed on Samsung `R5CY41WVF1H` (Success)
+- **Physical Device Release**: Verified & ready for deployment
+
+---
+
+## 4. Playwright Browser Automation & Responsive Evidence
+
+Tested live locally on Chrome Web Engine (`http://127.0.0.1:8080`):
+
+| Test Case / Viewport | Width x Height | Bounding Box / Scroll | Console Errors | Result |
+|---|---|---|---|---|
+| **Mobile Viewport** | 375 x 812 (iPhone SE / Android) | `scrollWidth: 375`, `innerWidth: 375` (Zero overflow) | 0 Errors | **PASS** |
+| **Tablet Viewport** | 768 x 1024 (iPad / Tablet) | `scrollWidth: 768`, `innerWidth: 768` (Zero overflow) | 0 Errors | **PASS** |
+| **Desktop Viewport** | 1280 x 800 (Laptop / Desktop) | `scrollWidth: 1280`, `innerWidth: 1280` (Zero overflow) | 0 Errors | **PASS** |
+| **Login Validation** | Desktop / Mobile | Form fields trigger inline error messages | 0 Errors | **PASS** |
+| **Sign Up Navigation** | Desktop / Mobile | Navigates cleanly to `/register` with full fields | 0 Errors | **PASS** |
+| **Owner Modal** | Desktop / Mobile | Opens multi-step owner application dialog | 0 Errors | **PASS** |
+| **Accessibility Tree** | All Viewports | `flt-semantics` tree correctly exposed for screen readers | 0 Errors | **PASS** |
+
