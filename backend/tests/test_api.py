@@ -252,10 +252,11 @@ def test_favorites_reorder_and_cancellation():
     assert order_req.status_code == 200
     order_data = order_req.json()
     order_id = order_data["id"]
-    # Subtotal: 25000 + 10000 = 35000. 20% of 35000 = 7000, capped at 5000.
+    # Subtotal: 25000 + 10000 = 35000. 20% of 35000 = 7000, capped at 5000. 1st order gets free delivery (0 delivery fee).
     assert order_data["subtotal_paise"] == 35000
     assert order_data["discount_paise"] == 5000
-    assert order_data["total_paise"] == 35000 + 3000 + int(35000 * 0.05) - 5000
+    assert order_data["delivery_fee_paise"] == 0
+    assert order_data["total_paise"] == 35000 + 0 + int(35000 * 0.05) - 5000
 
     # Check notification created for customer
     notif_resp = client.get("/notifications", headers=cust_headers)
@@ -1036,5 +1037,206 @@ def test_rider_self_registration_flow_and_security():
     assert rejected_partner.is_online is False
 
     db.close()
+
+
+def test_first_order_free_delivery_automatic_application_and_prevention_of_reuse():
+    db = TestingSessionLocal()
+    # 1. Create a restaurant with ₹35 delivery fee
+    rest = Restaurant(
+        name="Free Delivery Test Cafe",
+        cuisine="Cafe & Continental",
+        description="Freshly brewed coffee and sandwiches",
+        delivery_fee_paise=3500,
+        min_order_paise=10000,
+        rating=4.8,
+        is_active=True,
+        is_approved=True,
+        is_open=True,
+        address_text="Koramangala 5th Block",
+        prep_time_minutes=20,
+        latitude=12.9352,
+        longitude=77.6245
+    )
+    db.add(rest)
+    db.commit()
+    db.refresh(rest)
+
+    item = FoodItem(
+        restaurant_id=rest.id,
+        name="Artisan Club Sandwich",
+        price_paise=20000,
+        is_available=True
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+
+    # 2. Register a brand-new customer
+    new_user_email = "new_customer_free_delivery@foodflow.com"
+    reg_resp = client.post(
+        "/auth/register",
+        json={
+            "email": new_user_email,
+            "password": "customerpass123",
+            "full_name": "New Foodie",
+            "phone": "9888877777"
+        }
+    )
+    assert reg_resp.status_code == 200
+    token = reg_resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 3. Add item to cart
+    add_resp = client.post(
+        "/cart/items",
+        json={"food_item_id": item.id, "quantity": 1},
+        headers=headers
+    )
+    assert add_resp.status_code == 200
+
+    # 4. GET /cart - must show ₹0 delivery fee & is_first_order_free_delivery = True
+    cart_resp = client.get("/cart", headers=headers)
+    assert cart_resp.status_code == 200
+    cart_data = cart_resp.json()
+    assert cart_data["subtotal_paise"] == 20000
+    assert cart_data["delivery_fee_paise"] == 0  # Automatically 0!
+    assert cart_data["original_delivery_fee_paise"] == 3500
+    assert cart_data["is_first_order_free_delivery"] is True
+    assert cart_data["tax_paise"] == 1000  # 5% of 20000
+    assert cart_data["total_paise"] == 21000  # 20000 + 0 + 1000
+
+    # 5. Place the first order
+    order_resp = client.post(
+        "/orders",
+        json={
+            "delivery_address": "Flat 402, Sunshine Apartments, Bengaluru",
+            "delivery_lat": 12.9716,
+            "delivery_lng": 77.5946,
+            "payment_method": "COD"
+        },
+        headers=headers
+    )
+    assert order_resp.status_code == 200
+    order_data = order_resp.json()
+    assert order_data["delivery_fee_paise"] == 0
+    assert order_data["total_paise"] == 21000
+
+    # 6. Add another item to cart for second order
+    add_resp2 = client.post(
+        "/cart/items",
+        json={"food_item_id": item.id, "quantity": 1},
+        headers=headers
+    )
+    assert add_resp2.status_code == 200
+
+    # 7. GET /cart for second order - free delivery must NO LONGER apply (prevents repeated use)
+    cart_resp2 = client.get("/cart", headers=headers)
+    assert cart_resp2.status_code == 200
+    cart_data2 = cart_resp2.json()
+    assert cart_data2["delivery_fee_paise"] == 3500  # Normal delivery fee restored
+    assert cart_data2["original_delivery_fee_paise"] == 3500
+    assert cart_data2["is_first_order_free_delivery"] is False
+    assert cart_data2["total_paise"] == 24500  # 20000 + 3500 + 1000
+
+    # 8. Place the second order - delivery fee must be 3500
+    order_resp2 = client.post(
+        "/orders",
+        json={
+            "delivery_address": "Flat 402, Sunshine Apartments, Bengaluru",
+            "delivery_lat": 12.9716,
+            "delivery_lng": 77.5946,
+            "payment_method": "ONLINE"
+        },
+        headers=headers
+    )
+    assert order_resp2.status_code == 200
+    order_data2 = order_resp2.json()
+    assert order_data2["delivery_fee_paise"] == 3500
+    assert order_data2["total_paise"] == 24500
+
+    db.close()
+
+
+def test_customer_post_delivery_rating_and_review():
+    db = TestingSessionLocal()
+    # 1. Setup restaurant and customer
+    rest = Restaurant(
+        name="Review Bistro",
+        cuisine="Italian",
+        delivery_fee_paise=2500,
+        min_order_paise=5000,
+        rating=4.5,
+        is_active=True,
+        is_approved=True,
+        is_open=True,
+        address_text="Indiranagar 12th Main"
+    )
+    db.add(rest)
+    db.commit()
+    db.refresh(rest)
+
+    item = FoodItem(
+        restaurant_id=rest.id,
+        name="Margherita Pizza",
+        price_paise=30000,
+        is_available=True
+    )
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+
+    user = User(
+        email="review_customer@foodflow.com",
+        hashed_password=get_password_hash("pass12345"),
+        full_name="Pizza Lover",
+        role=UserRole.CUSTOMER,
+        is_active=True,
+        is_approved=True
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    order = Order(
+        user_id=user.id,
+        restaurant_id=rest.id,
+        status=OrderStatus.DELIVERED,
+        subtotal_paise=30000,
+        delivery_fee_paise=0,
+        tax_paise=1500,
+        discount_paise=0,
+        total_paise=31500,
+        delivery_address="Koramangala 1st Block",
+        delivery_lat=12.9352,
+        delivery_lng=77.6245,
+        payment_method="COD",
+        payment_status="COMPLETED"
+    )
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+
+    token = create_access_token(data={"sub": user.email, "role": "CUSTOMER"})
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Submit 5-star review
+    rev_resp = client.post(
+        "/reviews",
+        json={
+            "restaurant_id": rest.id,
+            "order_id": order.id,
+            "rating": 5.0,
+            "comment": "Absolutely incredible taste and fast delivery!"
+        },
+        headers=headers
+    )
+    assert rev_resp.status_code == 200
+    rev_data = rev_resp.json()
+    assert rev_data["rating"] == 5.0
+    assert rev_data["comment"] == "Absolutely incredible taste and fast delivery!"
+    assert rev_data["restaurant_id"] == rest.id
+
+    db.close()
+
 
 

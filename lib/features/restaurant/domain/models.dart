@@ -285,6 +285,8 @@ class CartSummaryModel {
   final int discountPaise;
   final int totalPaise;
   final CouponModel? appliedCoupon;
+  final bool isFirstOrderFreeDelivery;
+  final int originalDeliveryFeePaise;
 
   CartSummaryModel({
     required this.items,
@@ -295,6 +297,8 @@ class CartSummaryModel {
     required this.discountPaise,
     required this.totalPaise,
     this.appliedCoupon,
+    this.isFirstOrderFreeDelivery = false,
+    this.originalDeliveryFeePaise = 0,
   });
 
   factory CartSummaryModel.fromJson(Map<String, dynamic> json) {
@@ -311,6 +315,8 @@ class CartSummaryModel {
       discountPaise: json['discount_paise'] ?? 0,
       totalPaise: json['total_paise'] ?? 0,
       appliedCoupon: json['applied_coupon'] != null ? CouponModel.fromJson(json['applied_coupon']) : null,
+      isFirstOrderFreeDelivery: json['is_first_order_free_delivery'] ?? false,
+      originalDeliveryFeePaise: json['original_delivery_fee_paise'] ?? 0,
     );
   }
 }

@@ -182,7 +182,12 @@ class OrderTrackingScreen extends ConsumerWidget {
                 ),
                 const Divider(height: 24),
                 _buildRow('Subtotal', CurrencyFormatter.formatPaise(order.subtotalPaise)),
-                _buildRow('Delivery Fee', CurrencyFormatter.formatPaise(order.deliveryFeePaise)),
+                _buildRow(
+                  'Delivery Fee',
+                  order.deliveryFeePaise == 0 ? 'FREE (1st Order Free)' : CurrencyFormatter.formatPaise(order.deliveryFeePaise),
+                ),
+                if (order.discountPaise > 0)
+                  _buildRow('Discount (${order.couponCode ?? "PROMO"})', '- ${CurrencyFormatter.formatPaise(order.discountPaise)}'),
                 _buildRow('Tax (5% GST)', CurrencyFormatter.formatPaise(order.taxPaise)),
                 const Divider(),
                 _buildRow('Total Amount', CurrencyFormatter.formatPaise(order.totalPaise),

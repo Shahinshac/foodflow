@@ -272,6 +272,65 @@ class CartScreen extends ConsumerWidget {
 
                 const SizedBox(height: 20),
 
+                // First-Order Free Delivery Welcome Offer Banner
+                if (cart.isFirstOrderFreeDelivery) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          AppColors.veg.withValues(alpha: 0.15),
+                          AppColors.primary.withValues(alpha: 0.08),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.veg.withValues(alpha: 0.35)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppColors.veg.withValues(alpha: 0.2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.celebration_rounded, color: AppColors.veg, size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'First Order Free Delivery Applied! 🎉',
+                                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: AppColors.veg),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Welcome to FoodFlow! Enjoy ₹0 delivery fee on your first order.',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.veg,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text('FREE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
                 // Offers & Coupons Card
                 Text(
                   'Offers & Benefits',
@@ -400,7 +459,47 @@ class CartScreen extends ConsumerWidget {
                     children: [
                       _buildBillRow('Item Subtotal', CurrencyFormatter.formatPaise(subtotal), theme, isDark),
                       const SizedBox(height: 12),
-                      _buildBillRow('Delivery Fee', CurrencyFormatter.formatPaise(deliveryFee), theme, isDark),
+                      if (cart.isFirstOrderFreeDelivery)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Text('Delivery Fee', style: TextStyle(color: isDark ? Colors.white70 : Colors.black87, fontSize: 14)),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.veg.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text('1st Order Free', style: TextStyle(color: AppColors.veg, fontSize: 10, fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            ),
+                            Row(
+                              children: [
+                                if (cart.originalDeliveryFeePaise > 0) ...[
+                                  Text(
+                                    CurrencyFormatter.formatPaise(cart.originalDeliveryFeePaise),
+                                    style: const TextStyle(
+                                      decoration: TextDecoration.lineThrough,
+                                      color: Colors.grey,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                ],
+                                const Text(
+                                  'FREE',
+                                  style: TextStyle(color: AppColors.veg, fontWeight: FontWeight.bold, fontSize: 14),
+                                ),
+                              ],
+                            ),
+                          ],
+                        )
+                      else
+                        _buildBillRow('Delivery Fee', CurrencyFormatter.formatPaise(deliveryFee), theme, isDark),
                       const SizedBox(height: 12),
                       _buildBillRow('Taxes & Charges (5% GST)', CurrencyFormatter.formatPaise(tax), theme, isDark),
                       if (discount > 0) ...[

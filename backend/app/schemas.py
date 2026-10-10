@@ -221,6 +221,8 @@ class CartSummaryResponse(BaseModel):
     discount_paise: int
     total_paise: int
     applied_coupon: Optional[CouponResponse] = None
+    is_first_order_free_delivery: bool = False
+    original_delivery_fee_paise: int = 0
 
 # Order Schemas
 class OrderCreate(BaseModel):

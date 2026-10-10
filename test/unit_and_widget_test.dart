@@ -105,6 +105,26 @@ void main() {
       expect(cart.items.first.foodItem.name, 'Paneer Butter Masala');
       expect(cart.items.first.quantity, 2);
     });
+
+    test('CartSummaryModel handles first-order free delivery flags and original fee correctly', () {
+      final cartJson = {
+        'items': [],
+        'restaurant': null,
+        'subtotal_paise': 30000,
+        'delivery_fee_paise': 0,
+        'tax_paise': 1500,
+        'discount_paise': 0,
+        'total_paise': 31500,
+        'is_first_order_free_delivery': true,
+        'original_delivery_fee_paise': 3500,
+      };
+
+      final cart = CartSummaryModel.fromJson(cartJson);
+      expect(cart.deliveryFeePaise, 0);
+      expect(cart.isFirstOrderFreeDelivery, true);
+      expect(cart.originalDeliveryFeePaise, 3500);
+      expect(cart.totalPaise, 31500);
+    });
   });
 
   group('User & Role Domain Model Tests', () {

@@ -7,6 +7,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/widgets/error_and_empty_views.dart';
 import '../../../core/widgets/motion_system.dart';
+import '../../auth/presentation/auth_providers.dart';
 import 'order_providers.dart';
 
 class OrdersListScreen extends ConsumerWidget {
@@ -98,6 +99,146 @@ class OrdersListScreen extends ConsumerWidget {
         ),
       );
     }
+  }
+
+  void _showReviewDialog(BuildContext context, WidgetRef ref, int orderId, int restaurantId, String restaurantName) {
+    double selectedRating = 5.0;
+    final commentController = TextEditingController();
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (modalContext, setModalState) => Container(
+          padding: EdgeInsets.only(
+            top: 24,
+            left: 24,
+            right: 24,
+            bottom: MediaQuery.of(modalContext).viewInsets.bottom + 24,
+          ),
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.surfaceDark : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 48,
+                height: 5,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.white24 : Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Rate Your Order Experience ⭐',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'How was the food and delivery from $restaurantName?',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: isDark ? Colors.white60 : Colors.grey.shade600, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(5, (index) {
+                  final starVal = index + 1;
+                  return IconButton(
+                    iconSize: 36,
+                    icon: Icon(
+                      starVal <= selectedRating ? Icons.star_rounded : Icons.star_border_rounded,
+                      color: Colors.amber,
+                    ),
+                    onPressed: () {
+                      setModalState(() => selectedRating = starVal.toDouble());
+                    },
+                  );
+                }),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: commentController,
+                maxLines: 3,
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87),
+                decoration: InputDecoration(
+                  hintText: 'Share what you loved or feedback (Optional)',
+                  hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.grey.shade400, fontSize: 13),
+                  filled: true,
+                  fillColor: isDark ? const Color(0xFF1E262A) : Colors.grey.shade50,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: isDark ? AppColors.borderDark : AppColors.borderLight),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: isDark ? AppColors.borderDark : AppColors.borderLight),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  onPressed: () async {
+                    try {
+                      final api = ref.read(apiClientProvider);
+                      await api.dio.post(
+                        '/reviews',
+                        data: {
+                          'restaurant_id': restaurantId,
+                          'order_id': orderId,
+                          'rating': selectedRating,
+                          'comment': commentController.text.trim(),
+                        },
+                      );
+                      if (modalContext.mounted) {
+                        Navigator.pop(modalContext);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Thank you for rating your order! ⭐'),
+                              backgroundColor: AppColors.veg,
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      }
+                    } catch (e) {
+                      if (modalContext.mounted) {
+                        Navigator.pop(modalContext);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Could not submit review: ${ApiClient.formatError(e)}'),
+                              backgroundColor: AppColors.error,
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                      }
+                    }
+                  },
+                  child: const Text('Submit Review', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -264,6 +405,19 @@ class OrdersListScreen extends ConsumerWidget {
                                 ],
                               ),
                             ],
+                            if (order.deliveryFeePaise == 0) ...[
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  const Icon(Icons.celebration_rounded, size: 12, color: AppColors.veg),
+                                  const SizedBox(width: 4),
+                                  const Text(
+                                    'Free Delivery Applied 🎉',
+                                    style: TextStyle(color: AppColors.veg, fontSize: 12, fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            ],
                             const SizedBox(height: 4),
                             Text(
                               'Placed on $orderDate',
@@ -292,17 +446,34 @@ class OrdersListScreen extends ConsumerWidget {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                // Action button 1: Reorder
-                                OutlinedButton.icon(
-                                  onPressed: () => _handleReorder(context, ref, order.id),
-                                  icon: const Icon(Icons.replay_rounded, size: 16),
-                                  label: const Text('Reorder', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: AppColors.primary,
-                                    side: const BorderSide(color: AppColors.primary),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                  ),
+                                Row(
+                                  children: [
+                                    OutlinedButton.icon(
+                                      onPressed: () => _handleReorder(context, ref, order.id),
+                                      icon: const Icon(Icons.replay_rounded, size: 16),
+                                      label: const Text('Reorder', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: AppColors.primary,
+                                        side: const BorderSide(color: AppColors.primary),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                      ),
+                                    ),
+                                    if (isDelivered) ...[
+                                      const SizedBox(width: 8),
+                                      OutlinedButton.icon(
+                                        onPressed: () => _showReviewDialog(context, ref, order.id, order.restaurant.id, order.restaurant.name),
+                                        icon: const Icon(Icons.star_rounded, size: 16, color: Colors.amber),
+                                        label: const Text('Rate', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.amber)),
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: Colors.amber,
+                                          side: const BorderSide(color: Colors.amber),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                                 Row(
                                   children: [

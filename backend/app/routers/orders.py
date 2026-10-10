@@ -53,7 +53,15 @@ def create_order(
             "price_paise": item_price
         })
 
-    delivery_fee = restaurant.delivery_fee_paise
+    # Check first-order free delivery eligibility (no prior non-cancelled/non-rejected orders)
+    has_previous_orders = db.query(Order).filter(
+        Order.user_id == current_user.id,
+        Order.status.notin_([OrderStatus.CANCELLED, OrderStatus.REJECTED])
+    ).first() is not None
+    is_first_order = not has_previous_orders
+
+    original_delivery_fee = restaurant.delivery_fee_paise
+    delivery_fee = 0 if is_first_order else original_delivery_fee
     tax = int(subtotal * 0.05)  # 5% GST
     discount = 0
     applied_coupon = None

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from ..database import get_db
-from ..models import User, CartItem, FoodItem, Restaurant
+from ..models import User, CartItem, FoodItem, Restaurant, Order, OrderStatus
 from ..schemas import CartItemAdd, CartItemUpdate, CartItemResponse, CartSummaryResponse, RestaurantResponse
 from ..auth import get_current_user
 
@@ -12,6 +12,13 @@ router = APIRouter(prefix="/cart", tags=["Cart"])
 def get_cart(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     cart_items = db.query(CartItem).filter(CartItem.user_id == current_user.id).all()
 
+    # Check first-order free delivery eligibility (no prior non-cancelled/non-rejected orders)
+    has_previous_orders = db.query(Order).filter(
+        Order.user_id == current_user.id,
+        Order.status.notin_([OrderStatus.CANCELLED, OrderStatus.REJECTED])
+    ).first() is not None
+    is_first_order = not has_previous_orders
+
     if not cart_items:
         return CartSummaryResponse(
             items=[],
@@ -20,7 +27,9 @@ def get_cart(current_user: User = Depends(get_current_user), db: Session = Depen
             delivery_fee_paise=0,
             tax_paise=0,
             discount_paise=0,
-            total_paise=0
+            total_paise=0,
+            is_first_order_free_delivery=is_first_order,
+            original_delivery_fee_paise=0
         )
 
     # Financial calculation in integer paise
@@ -33,7 +42,8 @@ def get_cart(current_user: User = Depends(get_current_user), db: Session = Depen
     for item in cart_items:
         subtotal += item.food_item.price_paise * item.quantity
 
-    delivery_fee = restaurant.delivery_fee_paise if restaurant else 3000
+    original_delivery_fee = restaurant.delivery_fee_paise if restaurant else 3000
+    delivery_fee = 0 if is_first_order else original_delivery_fee
     tax = int(subtotal * 0.05) # 5% GST on food
     discount = 0
     total = subtotal + delivery_fee + tax - discount
@@ -45,7 +55,9 @@ def get_cart(current_user: User = Depends(get_current_user), db: Session = Depen
         delivery_fee_paise=delivery_fee,
         tax_paise=tax,
         discount_paise=discount,
-        total_paise=total
+        total_paise=total,
+        is_first_order_free_delivery=is_first_order,
+        original_delivery_fee_paise=original_delivery_fee
     )
 
 @router.post("/items", response_model=CartItemResponse)
