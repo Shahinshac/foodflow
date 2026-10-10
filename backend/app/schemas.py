@@ -37,9 +37,21 @@ class AddressCreate(BaseModel):
     city: str = "Innovation City"
     state: str = "State"
     pincode: str = "100001"
-    latitude: Optional[float] = 12.9716
-    longitude: Optional[float] = 77.5946
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     is_default: bool = False
+
+class AddressUpdate(BaseModel):
+    label: Optional[str] = None
+    street_address: Optional[str] = None
+    building_floor: Optional[str] = None
+    landmark: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    pincode: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    is_default: Optional[bool] = None
 
 class AddressResponse(AddressCreate):
     id: int
@@ -86,9 +98,9 @@ class RestaurantBase(BaseModel):
     delivery_fee_paise: int = 3000
     min_order_paise: int = 10000
     estimated_delivery_time: str = "25-35 min"
-    latitude: Optional[float] = 12.9352
-    longitude: Optional[float] = 77.6245
-    address_text: Optional[str] = "Block 4, Koramangala Food Street"
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    address_text: Optional[str] = None
     is_open: bool = True
     opening_time: str = "09:00 AM"
     closing_time: str = "11:00 PM"
@@ -114,6 +126,8 @@ class OwnerRegistrationRequest(BaseModel):
     cuisine: str
     description: Optional[str] = None
     address_text: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     image_url: Optional[str] = None
     delivery_fee_paise: int = 3000
     min_order_paise: int = 10000
@@ -155,6 +169,9 @@ class RestaurantSettingsUpdate(BaseModel):
     min_order_paise: Optional[int] = None
     image_url: Optional[str] = None
     upi_id: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    address_text: Optional[str] = None
 
 # Coupon & Promotion Schemas
 class CouponBase(BaseModel):
@@ -237,8 +254,8 @@ class CartSummaryResponse(BaseModel):
 # Order Schemas
 class OrderCreate(BaseModel):
     delivery_address: str
-    delivery_lat: Optional[float] = 12.9716
-    delivery_lng: Optional[float] = 77.5946
+    delivery_lat: Optional[float] = None
+    delivery_lng: Optional[float] = None
     payment_method: str = "COD"
     coupon_code: Optional[str] = None
 
@@ -271,8 +288,8 @@ class OrderResponse(BaseModel):
     total_paise: int
     coupon_code: Optional[str] = None
     delivery_address: str
-    delivery_lat: float
-    delivery_lng: float
+    delivery_lat: Optional[float] = None
+    delivery_lng: Optional[float] = None
     payment_method: str
     payment_status: str
     cancelled_by: Optional[str] = None
@@ -319,12 +336,12 @@ class LiveTrackingResponse(BaseModel):
 
     # Destination & Origin
     restaurant_name: str
-    restaurant_lat: float
-    restaurant_lng: float
+    restaurant_lat: Optional[float] = None
+    restaurant_lng: Optional[float] = None
     restaurant_address: str
 
-    delivery_lat: float
-    delivery_lng: float
+    delivery_lat: Optional[float] = None
+    delivery_lng: Optional[float] = None
     delivery_address: str
 
     # Rider Live Location

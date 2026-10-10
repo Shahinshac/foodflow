@@ -39,6 +39,22 @@ def onboard_restaurant(
     if existing:
         raise HTTPException(status_code=400, detail="Owner already has a registered restaurant")
 
+    if rest_in.latitude is None or rest_in.longitude is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Restaurant location coordinates (latitude and longitude) are required. Please select the location on the map."
+        )
+    if not (-90.0 <= rest_in.latitude <= 90.0) or not (-180.0 <= rest_in.longitude <= 180.0):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid coordinates. Latitude must be between -90 and 90, longitude between -180 and 180."
+        )
+    if not rest_in.address_text or not rest_in.address_text.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Restaurant address is required. Please provide a street address or location description."
+        )
+
     restaurant = Restaurant(
         owner_id=current_user.id,
         name=rest_in.name,
@@ -48,9 +64,9 @@ def onboard_restaurant(
         delivery_fee_paise=rest_in.delivery_fee_paise,
         min_order_paise=rest_in.min_order_paise,
         estimated_delivery_time=rest_in.estimated_delivery_time,
-        latitude=rest_in.latitude or 12.9352,
-        longitude=rest_in.longitude or 77.6245,
-        address_text=rest_in.address_text or "Block 4, Koramangala Food Street",
+        latitude=rest_in.latitude,
+        longitude=rest_in.longitude,
+        address_text=rest_in.address_text.strip(),
         is_open=rest_in.is_open,
         opening_time=rest_in.opening_time,
         closing_time=rest_in.closing_time,
@@ -148,6 +164,16 @@ def update_restaurant_settings(
         restaurant.image_url = settings.image_url
     if settings.upi_id is not None:
         restaurant.upi_id = settings.upi_id
+    if settings.latitude is not None:
+        if not (-90.0 <= settings.latitude <= 90.0):
+            raise HTTPException(status_code=400, detail="Invalid latitude (-90 to 90)")
+        restaurant.latitude = settings.latitude
+    if settings.longitude is not None:
+        if not (-180.0 <= settings.longitude <= 180.0):
+            raise HTTPException(status_code=400, detail="Invalid longitude (-180 to 180)")
+        restaurant.longitude = settings.longitude
+    if settings.address_text is not None:
+        restaurant.address_text = settings.address_text.strip()
 
     db.commit()
     db.refresh(restaurant)

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models import User, UserAddress, Favorite, Restaurant, Coupon
-from ..schemas import AddressCreate, AddressResponse, UserResponse, RestaurantResponse
+from ..schemas import AddressCreate, AddressUpdate, AddressResponse, UserResponse, RestaurantResponse
 from ..auth import get_current_user
 
 router = APIRouter(prefix="/users", tags=["User Profile, Addresses & Favorites"])
@@ -21,6 +21,11 @@ def add_user_address(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    if addr_in.latitude is not None and not (-90.0 <= addr_in.latitude <= 90.0):
+        raise HTTPException(status_code=400, detail="Invalid latitude (-90 to 90)")
+    if addr_in.longitude is not None and not (-180.0 <= addr_in.longitude <= 180.0):
+        raise HTTPException(status_code=400, detail="Invalid longitude (-180 to 180)")
+
     existing_count = db.query(UserAddress).filter(UserAddress.user_id == current_user.id).count()
     make_default = bool(addr_in.is_default or existing_count == 0)
 
@@ -36,14 +41,62 @@ def add_user_address(
         city=addr_in.city.strip() if addr_in.city else "City",
         state=addr_in.state,
         pincode=addr_in.pincode.strip() if addr_in.pincode else "",
-        latitude=addr_in.latitude or 12.9716,
-        longitude=addr_in.longitude or 77.5946,
+        latitude=addr_in.latitude,
+        longitude=addr_in.longitude,
         is_default=make_default
     )
     db.add(new_addr)
     db.commit()
     db.refresh(new_addr)
     return new_addr
+
+@router.put("/addresses/{address_id}", response_model=AddressResponse)
+def update_user_address(
+    address_id: int,
+    addr_in: AddressUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    addr = db.query(UserAddress).filter(
+        UserAddress.id == address_id,
+        UserAddress.user_id == current_user.id
+    ).first()
+    if not addr:
+        raise HTTPException(status_code=404, detail="Address not found")
+
+    if addr_in.latitude is not None and not (-90.0 <= addr_in.latitude <= 90.0):
+        raise HTTPException(status_code=400, detail="Invalid latitude (-90 to 90)")
+    if addr_in.longitude is not None and not (-180.0 <= addr_in.longitude <= 180.0):
+        raise HTTPException(status_code=400, detail="Invalid longitude (-180 to 180)")
+
+    if addr_in.label is not None:
+        addr.label = addr_in.label.upper().strip()
+    if addr_in.street_address is not None:
+        addr.street_address = addr_in.street_address.strip()
+    if addr_in.building_floor is not None:
+        addr.building_floor = addr_in.building_floor
+    if addr_in.landmark is not None:
+        addr.landmark = addr_in.landmark
+    if addr_in.city is not None:
+        addr.city = addr_in.city.strip()
+    if addr_in.state is not None:
+        addr.state = addr_in.state
+    if addr_in.pincode is not None:
+        addr.pincode = addr_in.pincode.strip()
+    if addr_in.latitude is not None:
+        addr.latitude = addr_in.latitude
+    if addr_in.longitude is not None:
+        addr.longitude = addr_in.longitude
+
+    if addr_in.is_default is True:
+        db.query(UserAddress).filter(UserAddress.user_id == current_user.id).update({"is_default": False})
+        addr.is_default = True
+    elif addr_in.is_default is False:
+        addr.is_default = False
+
+    db.commit()
+    db.refresh(addr)
+    return addr
 
 @router.delete("/addresses/{address_id}")
 def delete_user_address(

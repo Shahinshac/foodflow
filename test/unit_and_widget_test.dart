@@ -18,6 +18,9 @@ import 'package:foodflow/core/widgets/pwa_install_guide_dialog.dart';
 import 'package:foodflow/features/auth/data/auth_repository.dart';
 import 'package:foodflow/features/admin/presentation/admin_dashboard_screen.dart';
 import 'package:foodflow/features/auth/presentation/rider_register_screen.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:foodflow/core/services/routing_service.dart';
+import 'package:foodflow/features/tracking/presentation/live_map_tracking_screen.dart';
 import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -828,25 +831,155 @@ void main() {
     });
   });
 
-  group('User Address Model & Parsing Tests', () {
-    test('AddressItem parses JSON fields and handles defaults correctly', () {
-      final json = {
+  group('User Address Model & Location Tests', () {
+    test('AddressItem parses JSON fields, coordinates, and handles nulls correctly', () {
+      final jsonWithCoords = {
         'id': 101,
         'user_id': 5,
         'label': 'HOME',
         'street_address': '104 Sunrise Boulevard, Apt 4B',
         'city': 'Bengaluru',
         'pincode': '560001',
+        'latitude': 12.9279,
+        'longitude': 77.6271,
         'is_default': true,
       };
 
-      final address = AddressItem.fromJson(json);
+      final address = AddressItem.fromJson(jsonWithCoords);
       expect(address.id, 101);
       expect(address.label, 'HOME');
       expect(address.streetAddress, '104 Sunrise Boulevard, Apt 4B');
       expect(address.city, 'Bengaluru');
       expect(address.pincode, '560001');
+      expect(address.latitude, 12.9279);
+      expect(address.longitude, 77.6271);
       expect(address.isDefault, true);
+
+      final jsonWithoutCoords = {
+        'id': 102,
+        'user_id': 5,
+        'label': 'WORK',
+        'street_address': 'Tech Park, Whitefield',
+        'city': 'Bengaluru',
+        'pincode': '560066',
+        'is_default': false,
+      };
+      final addressNoCoords = AddressItem.fromJson(jsonWithoutCoords);
+      expect(addressNoCoords.latitude, isNull);
+      expect(addressNoCoords.longitude, isNull);
+    });
+  });
+
+  group('Restaurant Location Model Tests', () {
+    test('RestaurantModel preserves latitude and longitude in fromJson, toJson, and copyWith', () {
+      final json = {
+        'id': 12,
+        'name': 'Bawarchi Biryani',
+        'cuisine': 'Hyderabadi',
+        'rating': 4.5,
+        'delivery_fee_paise': 4000,
+        'min_order_paise': 20000,
+        'estimated_delivery_time': '35 min',
+        'latitude': 17.3850,
+        'longitude': 78.4867,
+        'address_text': 'RTC Cross Roads, Hyderabad',
+        'is_active': true,
+        'is_approved': true,
+      };
+
+      final rest = RestaurantModel.fromJson(json);
+      expect(rest.latitude, 17.3850);
+      expect(rest.longitude, 78.4867);
+      expect(rest.addressText, 'RTC Cross Roads, Hyderabad');
+
+      final serialized = rest.toJson();
+      expect(serialized['latitude'], 17.3850);
+      expect(serialized['longitude'], 78.4867);
+
+      final updated = rest.copyWith(latitude: 17.3900, longitude: 78.4900);
+      expect(updated.latitude, 17.3900);
+      expect(updated.longitude, 78.4900);
+      expect(updated.name, 'Bawarchi Biryani');
+    });
+
+    test('RestaurantModel handles null coordinates gracefully without Bengaluru fallback', () {
+      final json = {
+        'id': 13,
+        'name': 'New Unconfigured Store',
+        'cuisine': 'Cafe',
+        'rating': 4.0,
+        'delivery_fee_paise': 0,
+        'min_order_paise': 0,
+        'estimated_delivery_time': '20 min',
+      };
+      final rest = RestaurantModel.fromJson(json);
+      expect(rest.latitude, isNull);
+      expect(rest.longitude, isNull);
+    });
+  });
+
+  group('Routing Service & Live Tracking Tests', () {
+    test('RoutingService.hasMovedSignificantly correctly filters jitter and detects moves', () {
+      final p1 = const LatLng(12.9279, 77.6271);
+      final pJitter = const LatLng(12.92791, 77.62711); // ~1.5 meters away
+      final pMoved = const LatLng(12.9320, 77.6320); // ~600 meters away
+
+      expect(RoutingService.hasMovedSignificantly(null, p1), isTrue);
+      expect(RoutingService.hasMovedSignificantly(p1, pJitter, thresholdMeters: 25.0), isFalse);
+      expect(RoutingService.hasMovedSignificantly(p1, pMoved, thresholdMeters: 25.0), isTrue);
+    });
+
+    test('LiveTrackingData.fromJson does not silently substitute Bengaluru coordinates when null', () {
+      final jsonUnconfigured = {
+        'order_id': 999,
+        'status': 'PLACED',
+        'calculated_eta_minutes': 30,
+        'is_delayed': false,
+        'restaurant_name': 'Test Kitchen',
+        'restaurant_address': 'Unconfigured Loc',
+        'delivery_address': 'Manual entry without pin',
+        'rider_assigned': false,
+      };
+
+      final tracking = LiveTrackingData.fromJson(jsonUnconfigured);
+      expect(tracking.restaurantLocation, isNull);
+      expect(tracking.deliveryLocation, isNull);
+      expect(tracking.riderLocation, isNull);
+      expect(tracking.riderAssigned, isFalse);
+    });
+
+    test('LiveTrackingData.fromJson parses verified restaurant, delivery, and rider GPS coordinates', () {
+      final jsonConfigured = {
+        'order_id': 1001,
+        'status': 'OUT_FOR_DELIVERY',
+        'calculated_eta_minutes': 15,
+        'is_delayed': false,
+        'restaurant_name': 'Spice Hub',
+        'restaurant_lat': 12.9345,
+        'restaurant_lng': 77.6101,
+        'restaurant_address': 'Koramangala 4th Block',
+        'delivery_lat': 12.9500,
+        'delivery_lng': 77.6300,
+        'delivery_address': 'Indiranagar 100ft Rd',
+        'rider_assigned': true,
+        'rider_name': 'Rajesh Kumar',
+        'rider_phone': '+919876543210',
+        'rider_lat': 12.9400,
+        'rider_lng': 77.6200,
+        'rider_heading': 85.5,
+        'last_updated_at': '2026-10-10T15:30:00Z',
+      };
+
+      final tracking = LiveTrackingData.fromJson(jsonConfigured);
+      expect(tracking.restaurantLocation?.latitude, 12.9345);
+      expect(tracking.restaurantLocation?.longitude, 77.6101);
+      expect(tracking.deliveryLocation?.latitude, 12.9500);
+      expect(tracking.deliveryLocation?.longitude, 77.6300);
+      expect(tracking.riderLocation?.latitude, 12.9400);
+      expect(tracking.riderLocation?.longitude, 77.6200);
+      expect(tracking.riderHeading, 85.5);
+      expect(tracking.riderAssigned, isTrue);
+      expect(tracking.riderName, 'Rajesh Kumar');
     });
   });
 

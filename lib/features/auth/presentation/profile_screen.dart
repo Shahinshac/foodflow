@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:latlong2/latlong.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/services/location_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/error_and_empty_views.dart';
 import '../../../core/widgets/motion_system.dart';
@@ -14,6 +16,8 @@ class AddressItem {
   final String city;
   final String pincode;
   final bool isDefault;
+  final double? latitude;
+  final double? longitude;
 
   AddressItem({
     required this.id,
@@ -22,6 +26,8 @@ class AddressItem {
     required this.city,
     required this.pincode,
     required this.isDefault,
+    this.latitude,
+    this.longitude,
   });
 
   factory AddressItem.fromJson(Map<String, dynamic> json) {
@@ -32,6 +38,8 @@ class AddressItem {
       city: json['city'] ?? 'City',
       pincode: json['pincode'] ?? '',
       isDefault: json['is_default'] ?? false,
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
     );
   }
 }
@@ -52,6 +60,9 @@ class ProfileScreen extends ConsumerWidget {
     final pinController = TextEditingController(text: '100001');
     String selectedLabel = 'HOME';
     bool isSubmitting = false;
+    double? selectedLat;
+    double? selectedLng;
+    bool isLocating = false;
 
     showModalBottomSheet(
       context: context,
@@ -71,135 +82,497 @@ class ProfileScreen extends ConsumerWidget {
           ),
           child: Form(
             key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Add New Address',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(ctx),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: ['HOME', 'WORK', 'OTHER'].map((label) {
-                    final isSel = selectedLabel == label;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
-                      child: ChoiceChip(
-                        label: Text(label),
-                        selected: isSel,
-                        selectedColor: AppColors.primary,
-                        labelStyle: TextStyle(
-                          color: isSel ? Colors.white : Colors.black87,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        onSelected: (val) {
-                          if (val) setModalState(() => selectedLabel = label);
-                        },
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Add New Address',
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
                       ),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: streetController,
-                  decoration: const InputDecoration(
-                    labelText: 'Street Address & Flat / Building',
-                    prefixIcon: Icon(Icons.location_on_outlined),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
                   ),
-                  validator: (v) => v == null || v.trim().isEmpty ? 'Please enter address' : null,
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      flex: 2,
-                      child: TextFormField(
-                        controller: cityController,
-                        decoration: const InputDecoration(
-                          labelText: 'City',
-                          prefixIcon: Icon(Icons.location_city),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: ['HOME', 'WORK', 'OTHER'].map((label) {
+                      final isSel = selectedLabel == label;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8.0),
+                        child: ChoiceChip(
+                          label: Text(label),
+                          selected: isSel,
+                          selectedColor: AppColors.primary,
+                          labelStyle: TextStyle(
+                            color: isSel ? Colors.white : Colors.black87,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          onSelected: (val) {
+                            if (val) setModalState(() => selectedLabel = label);
+                          },
                         ),
-                        validator: (v) => v == null || v.trim().isEmpty ? 'City required' : null,
-                      ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: streetController,
+                    decoration: const InputDecoration(
+                      labelText: 'Street Address & Flat / Building',
+                      prefixIcon: Icon(Icons.location_on_outlined),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 1,
-                      child: TextFormField(
-                        controller: pinController,
-                        decoration: const InputDecoration(
-                          labelText: 'Pincode',
-                        ),
-                        keyboardType: TextInputType.number,
-                        validator: (v) => v == null || v.trim().isEmpty ? 'Pincode required' : null,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                    onPressed: isSubmitting
-                        ? null
-                        : () async {
-                            if (formKey.currentState!.validate()) {
-                              setModalState(() => isSubmitting = true);
-                              try {
-                                final api = ref.read(apiClientProvider);
-                                await api.dio.post(
-                                  '/users/addresses',
-                                  data: {
-                                    'label': selectedLabel,
-                                    'street_address': streetController.text.trim(),
-                                    'city': cityController.text.trim(),
-                                    'pincode': pinController.text.trim(),
-                                    'is_default': false,
-                                  },
-                                );
-                                ref.invalidate(userAddressesProvider);
-                                if (modalCtx.mounted) Navigator.pop(ctx);
-                              } catch (e) {
-                                if (modalCtx.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(ApiClient.formatError(e)),
-                                      backgroundColor: AppColors.error,
-                                      behavior: SnackBarBehavior.floating,
-                                    ),
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Please enter address' : null,
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: isLocating
+                              ? null
+                              : () async {
+                                  setModalState(() => isLocating = true);
+                                  final pos = await LocationService.determinePosition(
+                                    onError: (err) {
+                                      if (modalCtx.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err), backgroundColor: AppColors.error));
+                                      }
+                                    },
                                   );
-                                }
-                              } finally {
-                                if (modalCtx.mounted) setModalState(() => isSubmitting = false);
-                              }
+                                  if (pos != null) {
+                                    final addr = await LocationService.reverseGeocode(pos.latitude, pos.longitude);
+                                    setModalState(() {
+                                      selectedLat = pos.latitude;
+                                      selectedLng = pos.longitude;
+                                      streetController.text = addr;
+                                      isLocating = false;
+                                    });
+                                  } else {
+                                    setModalState(() => isLocating = false);
+                                  }
+                                },
+                          icon: isLocating
+                              ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.my_location_rounded, size: 16),
+                          label: Text(isLocating ? 'Locating...' : 'Use GPS', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.primary,
+                            side: const BorderSide(color: AppColors.primary),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final result = await LocationService.showMapPicker(
+                              context,
+                              initialCenter: (selectedLat != null && selectedLng != null) ? LatLng(selectedLat!, selectedLng!) : null,
+                              initialAddress: streetController.text,
+                              title: 'Pin Delivery Address',
+                              subtitle: 'Move pin to your doorstep for accurate deliveries',
+                              confirmButtonText: 'Confirm Address Location',
+                            );
+                            if (result != null) {
+                              setModalState(() {
+                                selectedLat = result.coordinates.latitude;
+                                selectedLng = result.coordinates.longitude;
+                                streetController.text = result.address;
+                              });
                             }
                           },
-                    child: isSubmitting
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.2),
-                          )
-                        : const Text('Save Address', style: TextStyle(fontWeight: FontWeight.bold)),
+                          icon: const Icon(Icons.map_rounded, size: 16),
+                          label: const Text('Pick on Map', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.secondary,
+                            side: const BorderSide(color: AppColors.secondary),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
+                  if (selectedLat != null && selectedLng != null) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.green.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.check_circle_rounded, color: Colors.green, size: 16),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'GPS Pinned (${selectedLat!.toStringAsFixed(4)}, ${selectedLng!.toStringAsFixed(4)})',
+                              style: const TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: TextFormField(
+                          controller: cityController,
+                          decoration: const InputDecoration(
+                            labelText: 'City',
+                            prefixIcon: Icon(Icons.location_city),
+                          ),
+                          validator: (v) => v == null || v.trim().isEmpty ? 'City required' : null,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 1,
+                        child: TextFormField(
+                          controller: pinController,
+                          decoration: const InputDecoration(
+                            labelText: 'Pincode',
+                          ),
+                          keyboardType: TextInputType.number,
+                          validator: (v) => v == null || v.trim().isEmpty ? 'Pincode required' : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed: isSubmitting
+                          ? null
+                          : () async {
+                              if (formKey.currentState!.validate()) {
+                                setModalState(() => isSubmitting = true);
+                                try {
+                                  final api = ref.read(apiClientProvider);
+                                  await api.dio.post(
+                                    '/users/addresses',
+                                    data: {
+                                      'label': selectedLabel,
+                                      'street_address': streetController.text.trim(),
+                                      'city': cityController.text.trim(),
+                                      'pincode': pinController.text.trim(),
+                                      'latitude': selectedLat,
+                                      'longitude': selectedLng,
+                                      'is_default': false,
+                                    },
+                                  );
+                                  ref.invalidate(userAddressesProvider);
+                                  if (modalCtx.mounted) Navigator.pop(ctx);
+                                } catch (e) {
+                                  if (modalCtx.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(ApiClient.formatError(e)),
+                                        backgroundColor: AppColors.error,
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
+                                } finally {
+                                  if (modalCtx.mounted) setModalState(() => isSubmitting = false);
+                                }
+                              }
+                            },
+                      child: isSubmitting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.2),
+                            )
+                          : const Text('Save Address', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showEditAddressDialog(BuildContext context, WidgetRef ref, AddressItem addr) {
+    final formKey = GlobalKey<FormState>();
+    final streetController = TextEditingController(text: addr.streetAddress);
+    final cityController = TextEditingController(text: addr.city);
+    final pinController = TextEditingController(text: addr.pincode);
+    String selectedLabel = addr.label;
+    bool isSubmitting = false;
+    double? selectedLat = addr.latitude;
+    double? selectedLng = addr.longitude;
+    bool isLocating = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (modalCtx, setModalState) => Container(
+          padding: EdgeInsets.only(
+            top: 24,
+            left: 24,
+            right: 24,
+            bottom: MediaQuery.of(modalCtx).viewInsets.bottom + 24,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Edit Address',
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: ['HOME', 'WORK', 'OTHER'].map((label) {
+                      final isSel = selectedLabel == label;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 8.0),
+                        child: ChoiceChip(
+                          label: Text(label),
+                          selected: isSel,
+                          selectedColor: AppColors.primary,
+                          labelStyle: TextStyle(
+                            color: isSel ? Colors.white : Colors.black87,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          onSelected: (val) {
+                            if (val) setModalState(() => selectedLabel = label);
+                          },
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: streetController,
+                    decoration: const InputDecoration(
+                      labelText: 'Street Address & Flat / Building',
+                      prefixIcon: Icon(Icons.location_on_outlined),
+                    ),
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Please enter address' : null,
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: isLocating
+                              ? null
+                              : () async {
+                                  setModalState(() => isLocating = true);
+                                  final pos = await LocationService.determinePosition(
+                                    onError: (err) {
+                                      if (modalCtx.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err), backgroundColor: AppColors.error));
+                                      }
+                                    },
+                                  );
+                                  if (pos != null) {
+                                    final newAddr = await LocationService.reverseGeocode(pos.latitude, pos.longitude);
+                                    setModalState(() {
+                                      selectedLat = pos.latitude;
+                                      selectedLng = pos.longitude;
+                                      streetController.text = newAddr;
+                                      isLocating = false;
+                                    });
+                                  } else {
+                                    setModalState(() => isLocating = false);
+                                  }
+                                },
+                          icon: isLocating
+                              ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.my_location_rounded, size: 16),
+                          label: Text(isLocating ? 'Locating...' : 'Use GPS', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.primary,
+                            side: const BorderSide(color: AppColors.primary),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final result = await LocationService.showMapPicker(
+                              context,
+                              initialCenter: (selectedLat != null && selectedLng != null) ? LatLng(selectedLat!, selectedLng!) : null,
+                              initialAddress: streetController.text,
+                              title: 'Edit Delivery Address Pin',
+                              subtitle: 'Move pin to your exact delivery location',
+                              confirmButtonText: 'Save Address Location',
+                            );
+                            if (result != null) {
+                              setModalState(() {
+                                selectedLat = result.coordinates.latitude;
+                                selectedLng = result.coordinates.longitude;
+                                streetController.text = result.address;
+                              });
+                            }
+                          },
+                          icon: const Icon(Icons.map_rounded, size: 16),
+                          label: const Text('Pick on Map', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.secondary,
+                            side: const BorderSide(color: AppColors.secondary),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (selectedLat != null && selectedLng != null) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.green.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.check_circle_rounded, color: Colors.green, size: 16),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'GPS Pinned (${selectedLat!.toStringAsFixed(4)}, ${selectedLng!.toStringAsFixed(4)})',
+                              style: const TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: TextFormField(
+                          controller: cityController,
+                          decoration: const InputDecoration(
+                            labelText: 'City',
+                            prefixIcon: Icon(Icons.location_city),
+                          ),
+                          validator: (v) => v == null || v.trim().isEmpty ? 'City required' : null,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 1,
+                        child: TextFormField(
+                          controller: pinController,
+                          decoration: const InputDecoration(
+                            labelText: 'Pincode',
+                          ),
+                          keyboardType: TextInputType.number,
+                          validator: (v) => v == null || v.trim().isEmpty ? 'Pincode required' : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed: isSubmitting
+                          ? null
+                          : () async {
+                              if (formKey.currentState!.validate()) {
+                                setModalState(() => isSubmitting = true);
+                                try {
+                                  final api = ref.read(apiClientProvider);
+                                  await api.dio.put(
+                                    '/users/addresses/${addr.id}',
+                                    data: {
+                                      'label': selectedLabel,
+                                      'street_address': streetController.text.trim(),
+                                      'city': cityController.text.trim(),
+                                      'pincode': pinController.text.trim(),
+                                      'latitude': selectedLat,
+                                      'longitude': selectedLng,
+                                    },
+                                  );
+                                  ref.invalidate(userAddressesProvider);
+                                  if (modalCtx.mounted) Navigator.pop(ctx);
+                                } catch (e) {
+                                  if (modalCtx.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(ApiClient.formatError(e)),
+                                        backgroundColor: AppColors.error,
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
+                                } finally {
+                                  if (modalCtx.mounted) setModalState(() => isSubmitting = false);
+                                }
+                              }
+                            },
+                      child: isSubmitting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.2),
+                            )
+                          : const Text('Update Address', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -430,16 +803,57 @@ class ProfileScreen extends ConsumerWidget {
                               ],
                             ],
                           ),
-                          subtitle: Text(
-                            '${addr.streetAddress}, ${addr.city} ${addr.pincode}',
-                            style: TextStyle(
-                              color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
-                              fontSize: 13,
-                            ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${addr.streetAddress}, ${addr.city} ${addr.pincode}',
+                                style: TextStyle(
+                                  color: isDark ? AppColors.textSecondaryDark : AppColors.textSecondaryLight,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              if (addr.latitude != null && addr.longitude != null) ...[
+                                const SizedBox(height: 3),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.pin_drop_rounded, size: 12, color: AppColors.veg),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Pin: ${addr.latitude!.toStringAsFixed(4)}, ${addr.longitude!.toStringAsFixed(4)}',
+                                      style: const TextStyle(fontSize: 11, color: AppColors.veg, fontWeight: FontWeight.w600),
+                                    ),
+                                  ],
+                                ),
+                              ] else ...[
+                                const SizedBox(height: 3),
+                                const Row(
+                                  children: [
+                                    Icon(Icons.warning_amber_rounded, size: 12, color: AppColors.pending),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'No map pin (tap edit to set)',
+                                      style: TextStyle(fontSize: 11, color: AppColors.pending, fontWeight: FontWeight.w600),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
                           ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete_outline, color: AppColors.error, size: 20),
-                            onPressed: () => _deleteAddress(context, ref, addr.id),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit_outlined, color: AppColors.primary, size: 20),
+                                tooltip: 'Edit Address & Pin',
+                                onPressed: () => _showEditAddressDialog(context, ref, addr),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline, color: AppColors.error, size: 20),
+                                tooltip: 'Delete Address',
+                                onPressed: () => _deleteAddress(context, ref, addr.id),
+                              ),
+                            ],
                           ),
                         ),
                       ).animate().fadeIn(delay: (index * 80).ms);

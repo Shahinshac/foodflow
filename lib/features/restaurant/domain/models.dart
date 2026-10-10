@@ -56,6 +56,8 @@ class RestaurantModel {
   final bool isOpen;
   final int prepTimeMinutes;
   final String? addressText;
+  final double? latitude;
+  final double? longitude;
   final bool isFavorite;
   final int activeOffersCount;
   final String? rejectionReason;
@@ -80,6 +82,8 @@ class RestaurantModel {
     this.isOpen = true,
     this.prepTimeMinutes = 25,
     this.addressText,
+    this.latitude,
+    this.longitude,
     this.isFavorite = false,
     this.activeOffersCount = 0,
     this.rejectionReason,
@@ -106,6 +110,8 @@ class RestaurantModel {
       isOpen: json['is_open'] ?? true,
       prepTimeMinutes: json['prep_time_minutes'] ?? 25,
       addressText: json['address_text'],
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
       isFavorite: json['is_favorite'] ?? false,
       activeOffersCount: json['active_offers_count'] ?? 0,
       rejectionReason: json['rejection_reason'],
@@ -116,6 +122,33 @@ class RestaurantModel {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'owner_id': ownerId,
+        'name': name,
+        'description': description,
+        'cuisine': cuisine,
+        'image_url': imageUrl,
+        'rating': rating,
+        'delivery_fee_paise': deliveryFeePaise,
+        'min_order_paise': minOrderPaise,
+        'estimated_delivery_time': estimatedDeliveryTime,
+        'is_active': isActive,
+        'is_approved': isApproved,
+        'is_open': isOpen,
+        'prep_time_minutes': prepTimeMinutes,
+        'address_text': addressText,
+        'latitude': latitude,
+        'longitude': longitude,
+        'is_favorite': isFavorite,
+        'active_offers_count': activeOffersCount,
+        'rejection_reason': rejectionReason,
+        'upi_id': upiId,
+        'owner_phone': ownerPhone,
+        'created_at': createdAt?.toIso8601String(),
+        'updated_at': updatedAt?.toIso8601String(),
+      };
+
   RestaurantModel copyWith({
     bool? isFavorite,
     bool? isOpen,
@@ -123,6 +156,9 @@ class RestaurantModel {
     bool? isApproved,
     int? activeOffersCount,
     String? rejectionReason,
+    double? latitude,
+    double? longitude,
+    String? addressText,
   }) {
     return RestaurantModel(
       id: id,
@@ -139,7 +175,9 @@ class RestaurantModel {
       isApproved: isApproved ?? this.isApproved,
       isOpen: isOpen ?? this.isOpen,
       prepTimeMinutes: prepTimeMinutes,
-      addressText: addressText,
+      addressText: addressText ?? this.addressText,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
       isFavorite: isFavorite ?? this.isFavorite,
       activeOffersCount: activeOffersCount ?? this.activeOffersCount,
       rejectionReason: rejectionReason ?? this.rejectionReason,

@@ -92,6 +92,12 @@ def create_order(
     total = subtotal + delivery_fee + tax - discount
     total = max(0, total)  # Guarantee non-negative total
 
+    # Validate coordinates if provided
+    if order_in.delivery_lat is not None and not (-90.0 <= order_in.delivery_lat <= 90.0):
+        raise HTTPException(status_code=400, detail="Invalid delivery latitude (-90 to 90)")
+    if order_in.delivery_lng is not None and not (-180.0 <= order_in.delivery_lng <= 180.0):
+        raise HTTPException(status_code=400, detail="Invalid delivery longitude (-180 to 180)")
+
     # Create Order record with Automatic Acceptance
     new_order = Order(
         user_id=current_user.id,
@@ -105,8 +111,8 @@ def create_order(
         coupon_id=applied_coupon.id if applied_coupon else None,
         coupon_code=applied_coupon.code if applied_coupon else None,
         delivery_address=order_in.delivery_address,
-        delivery_lat=order_in.delivery_lat or 12.9716,
-        delivery_lng=order_in.delivery_lng or 77.5946,
+        delivery_lat=order_in.delivery_lat,
+        delivery_lng=order_in.delivery_lng,
         payment_method=order_in.payment_method,
         payment_status="COMPLETED" if order_in.payment_method == "ONLINE" else "PENDING",
         prep_estimate_minutes=restaurant.prep_time_minutes,

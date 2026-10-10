@@ -112,6 +112,9 @@ class LocationService {
     BuildContext context, {
     LatLng? initialCenter,
     String? initialAddress,
+    String title = 'Pin Delivery Location',
+    String subtitle = 'Move the map to place the pin on your delivery spot',
+    String confirmButtonText = 'Confirm Delivery Location',
   }) async {
     return showModalBottomSheet<LocationResult>(
       context: context,
@@ -120,6 +123,9 @@ class LocationService {
       builder: (ctx) => _MapPickerSheet(
         initialCenter: initialCenter ?? const LatLng(12.9716, 77.5946),
         initialAddress: initialAddress,
+        title: title,
+        subtitle: subtitle,
+        confirmButtonText: confirmButtonText,
       ),
     );
   }
@@ -128,10 +134,16 @@ class LocationService {
 class _MapPickerSheet extends StatefulWidget {
   final LatLng initialCenter;
   final String? initialAddress;
+  final String title;
+  final String subtitle;
+  final String confirmButtonText;
 
   const _MapPickerSheet({
     required this.initialCenter,
     this.initialAddress,
+    this.title = 'Pin Delivery Location',
+    this.subtitle = 'Move the map to place the pin on your delivery spot',
+    this.confirmButtonText = 'Confirm Delivery Location',
   });
 
   @override
@@ -188,12 +200,12 @@ class _MapPickerSheetState extends State<_MapPickerSheet> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Pin Delivery Location',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    Text(
+                      widget.title,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),
                     Text(
-                      'Move the map to place the pin on your delivery spot',
+                      widget.subtitle,
                       style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.6)),
                     ),
                   ],
@@ -230,6 +242,9 @@ class _MapPickerSheetState extends State<_MapPickerSheet> {
                     TileLayer(
                       urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.foodflow.foodflow',
+                    ),
+                    const SimpleAttributionWidget(
+                      source: Text('© OpenStreetMap contributors'),
                     ),
                   ],
                 ),
@@ -334,9 +349,9 @@ class _MapPickerSheetState extends State<_MapPickerSheet> {
                           ),
                         );
                       },
-                      child: const Text(
-                        'Confirm Delivery Location',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                      child: Text(
+                        widget.confirmButtonText,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                       ),
                     ),
                   ),

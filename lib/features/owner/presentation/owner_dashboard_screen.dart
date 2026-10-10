@@ -13,6 +13,8 @@ import '../../../core/utils/currency_formatter.dart';
 import '../../../core/widgets/dashboard_sidebar.dart';
 import '../../../core/widgets/error_and_empty_views.dart';
 import '../../../core/widgets/motion_system.dart';
+import 'package:latlong2/latlong.dart';
+import '../../../core/services/location_service.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../notifications/presentation/notification_sheet.dart';
 import '../../restaurant/domain/models.dart';
@@ -206,6 +208,53 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to update UPI ID: $e'), backgroundColor: AppColors.error),
         );
+      }
+    }
+  }
+
+  void _showEditLocationDialog(RestaurantModel restaurant) async {
+    final initialCenter = (restaurant.latitude != null && restaurant.longitude != null)
+        ? LatLng(restaurant.latitude!, restaurant.longitude!)
+        : null;
+    final result = await LocationService.showMapPicker(
+      context,
+      initialCenter: initialCenter,
+      initialAddress: restaurant.addressText,
+      title: 'Set Restaurant Location',
+      subtitle: 'Move pin to your restaurant entrance or use current GPS',
+      confirmButtonText: 'Save Restaurant Location',
+    );
+
+    if (result != null) {
+      try {
+        final apiClient = ref.read(apiClientProvider);
+        await apiClient.dio.put(
+          '/owner/restaurant/settings',
+          data: {
+            'latitude': result.coordinates.latitude,
+            'longitude': result.coordinates.longitude,
+            'address_text': result.address,
+          },
+        );
+        ref.invalidate(ownerRestaurantProvider);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Restaurant location updated and saved successfully!'),
+              backgroundColor: AppColors.veg,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to update location: $e'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
       }
     }
   }
@@ -779,6 +828,9 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen>
     final upiCtrl = TextEditingController();
     String? uploadedImageUrl;
     bool isUploading = false;
+    double? selectedLat;
+    double? selectedLng;
+    bool isLocating = false;
 
     showModalBottomSheet(
       context: context,
@@ -833,6 +885,107 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen>
                     decoration: const InputDecoration(labelText: 'Complete Address / Location', hintText: 'e.g. Shop 4B, 100ft Road, Indiranagar'),
                     validator: (v) => v == null || v.trim().isEmpty ? 'Address required' : null,
                   ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: isLocating
+                              ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.my_location_rounded, size: 16),
+                          label: Text(isLocating ? 'Detecting GPS...' : 'Use Current GPS'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.primary,
+                            side: const BorderSide(color: AppColors.primary),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                          ),
+                          onPressed: isLocating
+                              ? null
+                              : () async {
+                                  setModalState(() => isLocating = true);
+                                  final pos = await LocationService.determinePosition(
+                                    onError: (err) {
+                                      if (ctx.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(err), backgroundColor: AppColors.error));
+                                      }
+                                    },
+                                  );
+                                  if (pos != null) {
+                                    final addr = await LocationService.reverseGeocode(pos.latitude, pos.longitude);
+                                    setModalState(() {
+                                      selectedLat = pos.latitude;
+                                      selectedLng = pos.longitude;
+                                      addressCtrl.text = addr;
+                                      isLocating = false;
+                                    });
+                                  } else {
+                                    setModalState(() => isLocating = false);
+                                  }
+                                },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.map_rounded, size: 16),
+                          label: const Text('Pick on Map'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.secondary,
+                            side: const BorderSide(color: AppColors.secondary),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                          ),
+                          onPressed: () async {
+                            final result = await LocationService.showMapPicker(
+                              context,
+                              initialCenter: (selectedLat != null && selectedLng != null) ? LatLng(selectedLat!, selectedLng!) : null,
+                              initialAddress: addressCtrl.text,
+                              title: 'Pin Restaurant Location',
+                              subtitle: 'Place the pin at your restaurant entrance',
+                              confirmButtonText: 'Confirm Restaurant Location',
+                            );
+                            if (result != null) {
+                              setModalState(() {
+                                selectedLat = result.coordinates.latitude;
+                                selectedLng = result.coordinates.longitude;
+                                addressCtrl.text = result.address;
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (selectedLat != null && selectedLng != null) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.green.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.check_circle_rounded, color: Colors.green, size: 16),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'GPS Location Selected: ${selectedLat!.toStringAsFixed(4)}, ${selectedLng!.toStringAsFixed(4)}',
+                              style: const TextStyle(fontSize: 12, color: Colors.green, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '⚠️ Location pin is required so customers and riders can locate your restaurant.',
+                      style: TextStyle(fontSize: 11, color: Colors.orange.shade800, fontWeight: FontWeight.w500),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -916,6 +1069,15 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen>
                       ),
                       onPressed: () async {
                         if (formKey.currentState!.validate()) {
+                          if (selectedLat == null || selectedLng == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Please select your restaurant location on the map using GPS or the pin picker.'),
+                                backgroundColor: AppColors.error,
+                              ),
+                            );
+                            return;
+                          }
                           try {
                             final delFeePaise = (double.parse(delFeeCtrl.text.trim()) * 100).toInt();
                             final minOrderPaise = (double.parse(minOrderCtrl.text.trim()) * 100).toInt();
@@ -928,6 +1090,8 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen>
                                 'cuisine': cuisineCtrl.text.trim(),
                                 'description': descCtrl.text.trim(),
                                 'address_text': addressCtrl.text.trim(),
+                                'latitude': selectedLat,
+                                'longitude': selectedLng,
                                 'delivery_fee_paise': delFeePaise,
                                 'min_order_paise': minOrderPaise,
                                 'estimated_delivery_time': estTimeCtrl.text.trim(),
@@ -1661,6 +1825,90 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen>
                               Icon(Icons.check_circle_outline, color: Colors.green, size: 14),
                               SizedBox(width: 4),
                               Text('Active for Dynamic Rider QR Payments', style: TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // Restaurant Location & Map Pin Settings Card
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: AppColors.softShadow,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.location_on_rounded, color: AppColors.primary),
+                              SizedBox(width: 8),
+                              Text('Restaurant Location', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          TextButton.icon(
+                            icon: const Icon(Icons.pin_drop_outlined, size: 16),
+                            label: Text(
+                              restaurant.latitude != null && restaurant.longitude != null ? 'Edit Location' : 'Set Location',
+                            ),
+                            onPressed: () => _showEditLocationDialog(restaurant),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        restaurant.addressText != null && restaurant.addressText!.isNotEmpty
+                            ? restaurant.addressText!
+                            : 'No address configured yet.',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87),
+                      ),
+                      const SizedBox(height: 6),
+                      if (restaurant.latitude != null && restaurant.longitude != null) ...[
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.green.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.green.shade200),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.gps_fixed_rounded, color: Colors.green, size: 14),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'GPS Pinned (${restaurant.latitude!.toStringAsFixed(4)}, ${restaurant.longitude!.toStringAsFixed(4)})',
+                                    style: const TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ] else ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.orange.shade200),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 14),
+                              SizedBox(width: 4),
+                              Text('Location Not Configured — Set map pin for live order tracking', style: TextStyle(color: Colors.orange, fontSize: 11, fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ),

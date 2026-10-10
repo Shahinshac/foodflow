@@ -95,6 +95,26 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       return;
     }
 
+    if (_deliveryLat == null || _deliveryLng == null ||
+        _deliveryLat! < -90 || _deliveryLat! > 90 ||
+        _deliveryLng! < -180 || _deliveryLng! > 180) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'A valid map pin is required for live delivery tracking. Please tap "Pick on Map" or "Use GPS".',
+          ),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'Pick Pin',
+            textColor: Colors.white,
+            onPressed: _pickOnMap,
+          ),
+        ),
+      );
+      return;
+    }
+
     setState(() => _isSubmitting = true);
 
     try {
@@ -143,6 +163,43 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final couponDiscount = ref.watch(couponDiscountPaiseProvider);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+
+    ref.listen<AsyncValue<List<AddressItem>>>(userAddressesProvider, (prev, next) {
+      next.whenData((addresses) {
+        if (addresses.isNotEmpty && _selectedAddressId == null && _addressController.text.isEmpty) {
+          final defaultAddr = addresses.firstWhere(
+            (a) => a.isDefault,
+            orElse: () => addresses.first,
+          );
+          setState(() {
+            _selectedAddressId = defaultAddr.id;
+            _addressController.text = '${defaultAddr.streetAddress}, ${defaultAddr.city} ${defaultAddr.pincode}';
+            _deliveryLat = defaultAddr.latitude;
+            _deliveryLng = defaultAddr.longitude;
+          });
+        }
+      });
+    });
+
+    addressesAsync.whenData((addresses) {
+      if (addresses.isNotEmpty && _selectedAddressId == null && _addressController.text.isEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (_selectedAddressId == null && _addressController.text.isEmpty) {
+            final defaultAddr = addresses.firstWhere(
+              (a) => a.isDefault,
+              orElse: () => addresses.first,
+            );
+            setState(() {
+              _selectedAddressId = defaultAddr.id;
+              _addressController.text = '${defaultAddr.streetAddress}, ${defaultAddr.city} ${defaultAddr.pincode}';
+              _deliveryLat = defaultAddr.latitude;
+              _deliveryLng = defaultAddr.longitude;
+            });
+          }
+        });
+      }
+    });
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
@@ -225,11 +282,41 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                                     color: isSel ? AppColors.primary : (isDark ? Colors.white : Colors.black87),
                                   ),
                                 ),
-                                subtitle: Text('${addr.streetAddress}, ${addr.city} ${addr.pincode}'),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('${addr.streetAddress}, ${addr.city} ${addr.pincode}'),
+                                    const SizedBox(height: 3),
+                                    if (addr.latitude != null && addr.longitude != null)
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.pin_drop_rounded, size: 12, color: AppColors.veg),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'GPS Pin: ${addr.latitude!.toStringAsFixed(4)}, ${addr.longitude!.toStringAsFixed(4)}',
+                                            style: const TextStyle(fontSize: 11, color: AppColors.veg, fontWeight: FontWeight.w600),
+                                          ),
+                                        ],
+                                      )
+                                    else
+                                      const Row(
+                                        children: [
+                                          Icon(Icons.warning_amber_rounded, size: 12, color: AppColors.pending),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            'No map pin (use Pick on Map to set)',
+                                            style: TextStyle(fontSize: 11, color: AppColors.pending, fontWeight: FontWeight.w600),
+                                          ),
+                                        ],
+                                      ),
+                                  ],
+                                ),
                                 onTap: () {
                                   setState(() {
                                     _selectedAddressId = addr.id;
                                     _addressController.text = '${addr.streetAddress}, ${addr.city} ${addr.pincode}';
+                                    _deliveryLat = addr.latitude;
+                                    _deliveryLng = addr.longitude;
                                   });
                                 },
                               );
@@ -304,6 +391,51 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     ],
                   ),
                   const SizedBox(height: 10),
+
+                  // Pin coordinates status chip
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: (_deliveryLat != null && _deliveryLng != null)
+                          ? AppColors.veg.withValues(alpha: 0.1)
+                          : AppColors.pending.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: (_deliveryLat != null && _deliveryLng != null)
+                            ? AppColors.veg.withValues(alpha: 0.3)
+                            : AppColors.pending.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          (_deliveryLat != null && _deliveryLng != null)
+                              ? Icons.pin_drop_rounded
+                              : Icons.wrong_location_rounded,
+                          size: 16,
+                          color: (_deliveryLat != null && _deliveryLng != null)
+                              ? AppColors.veg
+                              : AppColors.pending,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            (_deliveryLat != null && _deliveryLng != null)
+                                ? 'Pin: ${_deliveryLat!.toStringAsFixed(4)}, ${_deliveryLng!.toStringAsFixed(4)} (Verified for routing)'
+                                : 'Map pin required for delivery tracking. Use GPS or Pick on Map.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: (_deliveryLat != null && _deliveryLng != null)
+                                  ? AppColors.veg
+                                  : (isDark ? Colors.orangeAccent : Colors.orange.shade900),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
 
                   TextFormField(
                     controller: _addressController,

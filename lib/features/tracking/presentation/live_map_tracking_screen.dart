@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/services/routing_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/dialer_helper.dart';
 import '../../../core/widgets/error_and_empty_views.dart';
@@ -19,9 +20,9 @@ class LiveTrackingData {
   final int calculatedEtaMinutes;
   final bool isDelayed;
   final String restaurantName;
-  final LatLng restaurantLocation;
+  final LatLng? restaurantLocation;
   final String restaurantAddress;
-  final LatLng deliveryLocation;
+  final LatLng? deliveryLocation;
   final String deliveryAddress;
   final bool riderAssigned;
   final String? riderName;
@@ -36,9 +37,9 @@ class LiveTrackingData {
     required this.calculatedEtaMinutes,
     required this.isDelayed,
     required this.restaurantName,
-    required this.restaurantLocation,
+    this.restaurantLocation,
     required this.restaurantAddress,
-    required this.deliveryLocation,
+    this.deliveryLocation,
     required this.deliveryAddress,
     required this.riderAssigned,
     this.riderName,
@@ -56,14 +57,18 @@ class LiveTrackingData {
       isDelayed: json['is_delayed'] ?? false,
       restaurantName: json['restaurant_name'] ?? 'Restaurant',
       restaurantAddress: json['restaurant_address'] ?? 'Restaurant Address',
-      restaurantLocation: LatLng(
-        (json['restaurant_lat'] as num?)?.toDouble() ?? 12.9352,
-        (json['restaurant_lng'] as num?)?.toDouble() ?? 77.6245,
-      ),
-      deliveryLocation: LatLng(
-        (json['delivery_lat'] as num?)?.toDouble() ?? 12.9716,
-        (json['delivery_lng'] as num?)?.toDouble() ?? 77.5946,
-      ),
+      restaurantLocation: json['restaurant_lat'] != null && json['restaurant_lng'] != null
+          ? LatLng(
+              (json['restaurant_lat'] as num).toDouble(),
+              (json['restaurant_lng'] as num).toDouble(),
+            )
+          : null,
+      deliveryLocation: json['delivery_lat'] != null && json['delivery_lng'] != null
+          ? LatLng(
+              (json['delivery_lat'] as num).toDouble(),
+              (json['delivery_lng'] as num).toDouble(),
+            )
+          : null,
       deliveryAddress: json['delivery_address'] ?? '',
       riderAssigned: json['rider_assigned'] ?? false,
       riderName: json['rider_name'],
@@ -99,6 +104,11 @@ class _LiveMapTrackingScreenState extends ConsumerState<LiveMapTrackingScreen> {
   bool _isLoading = true;
   String? _errorMessage;
   bool _hasPromptedReview = false;
+  bool _hasInitialFitted = false;
+  RouteResult? _activeRoute;
+  bool _isLoadingRoute = false;
+  LatLng? _lastRoutedOrigin;
+  LatLng? _lastRoutedDestination;
 
   @override
   void initState() {
@@ -126,6 +136,12 @@ class _LiveMapTrackingScreenState extends ConsumerState<LiveMapTrackingScreen> {
           _trackingData = data;
           _isLoading = false;
         });
+
+        _updateRoute(data);
+
+        if (!_hasInitialFitted) {
+          _fitMapBounds();
+        }
 
         // If delivered, show review modal once
         if (data.status == 'DELIVERED' && !_hasPromptedReview) {
@@ -158,6 +174,7 @@ class _LiveMapTrackingScreenState extends ConsumerState<LiveMapTrackingScreen> {
           final newLat = (decoded['rider_lat'] as num).toDouble();
           final newLng = (decoded['rider_lng'] as num).toDouble();
           final heading = (decoded['rider_heading'] as num?)?.toDouble() ?? 0.0;
+          final updatedRiderLoc = LatLng(newLat, newLng);
 
           setState(() {
             _trackingData = LiveTrackingData(
@@ -173,16 +190,178 @@ class _LiveMapTrackingScreenState extends ConsumerState<LiveMapTrackingScreen> {
               riderAssigned: true,
               riderName: _trackingData!.riderName,
               riderPhone: _trackingData!.riderPhone,
-              riderLocation: LatLng(newLat, newLng),
+              riderLocation: updatedRiderLoc,
               riderHeading: heading,
               lastUpdatedAt: DateTime.now(),
             );
           });
+
+          _updateRoute(_trackingData!);
         }
       });
     } catch (_) {
       // Automatic fallback to REST polling
     }
+  }
+
+  void _fitMapBounds() {
+    if (_trackingData == null) return;
+    final points = <LatLng>[];
+    if (_trackingData!.restaurantLocation != null) points.add(_trackingData!.restaurantLocation!);
+    if (_trackingData!.deliveryLocation != null) points.add(_trackingData!.deliveryLocation!);
+    if (_trackingData!.riderLocation != null) points.add(_trackingData!.riderLocation!);
+
+    if (points.isEmpty) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (points.length == 1) {
+        _mapController.move(points.first, 15.0);
+      } else {
+        _mapController.fitCamera(
+          CameraFit.bounds(
+            bounds: LatLngBounds.fromPoints(points),
+            padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 70),
+          ),
+        );
+      }
+      _hasInitialFitted = true;
+    });
+  }
+
+  Future<void> _updateRoute(LiveTrackingData data) async {
+    final origin = data.riderLocation ?? data.restaurantLocation;
+    final destination = data.deliveryLocation;
+
+    if (origin == null || destination == null) return;
+
+    final needRecalc = _activeRoute == null ||
+        _lastRoutedOrigin == null ||
+        _lastRoutedDestination == null ||
+        RoutingService.hasMovedSignificantly(_lastRoutedOrigin, origin, thresholdMeters: 30.0) ||
+        RoutingService.hasMovedSignificantly(_lastRoutedDestination, destination, thresholdMeters: 30.0);
+
+    if (!needRecalc || _isLoadingRoute) return;
+
+    _isLoadingRoute = true;
+    try {
+      final route = await RoutingService.getRoadRoute(origin, destination);
+      if (mounted) {
+        setState(() {
+          _activeRoute = route;
+          _lastRoutedOrigin = origin;
+          _lastRoutedDestination = destination;
+        });
+      }
+    } catch (_) {
+      // Handled inside RoutingService
+    } finally {
+      _isLoadingRoute = false;
+    }
+  }
+
+  void _centerOnRider() {
+    if (_trackingData?.riderLocation != null) {
+      _mapController.move(_trackingData!.riderLocation!, 16.0);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Awaiting rider GPS location...'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Widget _buildGpsStatusChip(LiveTrackingData data) {
+    String text;
+    Color color;
+    IconData icon;
+
+    if (!data.riderAssigned) {
+      text = 'Awaiting rider assignment';
+      color = Colors.grey.shade600;
+      icon = Icons.person_search_rounded;
+    } else if (data.riderLocation == null) {
+      text = 'Awaiting rider GPS';
+      color = Colors.orange.shade800;
+      icon = Icons.gps_not_fixed_rounded;
+    } else {
+      final updated = data.lastUpdatedAt ?? DateTime.now();
+      final diff = DateTime.now().difference(updated);
+      if (diff.inSeconds < 45) {
+        text = 'Live GPS';
+        color = AppColors.veg;
+        icon = Icons.gps_fixed_rounded;
+      } else if (diff.inMinutes < 60) {
+        text = 'GPS updated ${diff.inMinutes}m ago';
+        color = Colors.orange.shade800;
+        icon = Icons.access_time_rounded;
+      } else {
+        text = 'Stale GPS (${diff.inHours}h ago)';
+        color = AppColors.error;
+        icon = Icons.gps_off_rounded;
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.25), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRouteStatusChip() {
+    if (_activeRoute == null) return const SizedBox.shrink();
+
+    final isRoad = _activeRoute!.isRoadRoute;
+    final color = isRoad ? AppColors.veg : Colors.deepOrange;
+    final label = isRoad
+        ? 'Road: ${_activeRoute!.distanceKm.toStringAsFixed(1)} km (~${_activeRoute!.durationMinutes} min)'
+        : 'Straight-line (Road route unavailable)';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.25), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(isRoad ? Icons.alt_route_rounded : Icons.straighten_rounded, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showReviewModal() {
@@ -321,7 +500,96 @@ class _LiveMapTrackingScreenState extends ConsumerState<LiveMapTrackingScreen> {
 
   Widget _buildLiveTrackingBody() {
     final data = _trackingData!;
-    final centerPoint = data.riderLocation ?? data.restaurantLocation;
+    final centerPoint = data.riderLocation ??
+        data.restaurantLocation ??
+        data.deliveryLocation ??
+        const LatLng(0, 0);
+
+    final polylines = <Polyline>[];
+    if (_activeRoute != null && _activeRoute!.points.isNotEmpty) {
+      polylines.add(
+        Polyline(
+          points: _activeRoute!.points,
+          strokeWidth: _activeRoute!.isRoadRoute ? 4.5 : 3.0,
+          color: _activeRoute!.isRoadRoute ? AppColors.primary : Colors.deepOrange,
+        ),
+      );
+    } else {
+      final fallbackPoints = <LatLng>[
+        if (data.restaurantLocation != null) data.restaurantLocation!,
+        if (data.riderLocation != null) data.riderLocation!,
+        if (data.deliveryLocation != null) data.deliveryLocation!,
+      ];
+      if (fallbackPoints.length >= 2) {
+        polylines.add(
+          Polyline(
+            points: fallbackPoints,
+            strokeWidth: 2.5,
+            color: Colors.grey.shade400,
+          ),
+        );
+      }
+    }
+
+    final markers = <Marker>[
+      // Restaurant Marker
+      if (data.restaurantLocation != null)
+        Marker(
+          point: data.restaurantLocation!,
+          width: 44,
+          height: 44,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.amber.shade700,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 6),
+              ],
+            ),
+            child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 22),
+          ),
+        ),
+
+      // Customer Destination Marker
+      if (data.deliveryLocation != null)
+        Marker(
+          point: data.deliveryLocation!,
+          width: 44,
+          height: 44,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.red.shade600,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 6),
+              ],
+            ),
+            child: const Icon(Icons.location_on, color: Colors.white, size: 24),
+          ),
+        ),
+
+      // Delivery Partner Rider Marker with Directional Rotation
+      if (data.riderLocation != null)
+        Marker(
+          point: data.riderLocation!,
+          width: 50,
+          height: 50,
+          child: Transform.rotate(
+            angle: data.riderHeading * (3.14159 / 180.0),
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 8),
+                ],
+              ),
+              child: const Icon(Icons.two_wheeler_rounded, color: Colors.white, size: 26),
+            ),
+          ),
+        ),
+    ];
 
     return Column(
       children: [
@@ -341,79 +609,15 @@ class _LiveMapTrackingScreenState extends ConsumerState<LiveMapTrackingScreen> {
                     urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName: 'com.foodflow.foodflow',
                   ),
-                  PolylineLayer(
-                    polylines: [
-                      Polyline(
-                        points: [
-                          data.restaurantLocation,
-                          if (data.riderLocation != null) data.riderLocation!,
-                          data.deliveryLocation,
-                        ],
-                        strokeWidth: 4.0,
-                        color: AppColors.primary,
-                      ),
-                    ],
-                  ),
-                  MarkerLayer(
-                    markers: [
-                      // Restaurant Marker
-                      Marker(
-                        point: data.restaurantLocation,
-                        width: 44,
-                        height: 44,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.amber.shade700,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 6),
-                            ],
-                          ),
-                          child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 22),
-                        ),
-                      ),
-                      // Customer Destination Marker
-                      Marker(
-                        point: data.deliveryLocation,
-                        width: 44,
-                        height: 44,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.red.shade600,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 6),
-                            ],
-                          ),
-                          child: const Icon(Icons.location_on, color: Colors.white, size: 24),
-                        ),
-                      ),
-                      // Delivery Partner Rider Marker with Directional Rotation
-                      if (data.riderLocation != null)
-                        Marker(
-                          point: data.riderLocation!,
-                          width: 50,
-                          height: 50,
-                          child: Transform.rotate(
-                            angle: data.riderHeading * (3.14159 / 180.0),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: AppColors.primary,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 2),
-                                boxShadow: [
-                                  BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 8),
-                                ],
-                              ),
-                              child: const Icon(Icons.two_wheeler_rounded, color: Colors.white, size: 26),
-                            ),
-                          ),
-                        ),
-                    ],
+                  if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
+                  if (markers.isNotEmpty) MarkerLayer(markers: markers),
+                  const SimpleAttributionWidget(
+                    source: Text('© OpenStreetMap contributors'),
                   ),
                 ],
               ),
-              // Floating ETA Badge
+
+              // Floating ETA & Status Badge
               Positioned(
                 top: 16,
                 left: 16,
@@ -427,40 +631,111 @@ class _LiveMapTrackingScreenState extends ConsumerState<LiveMapTrackingScreen> {
                       BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 10, offset: const Offset(0, 4)),
                     ],
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            data.status == 'DELIVERED'
-                                ? 'Order Delivered!'
-                                : 'Arriving in ~${data.calculatedEtaMinutes} mins',
-                            style: const TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.primary,
-                            ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                data.status == 'DELIVERED'
+                                    ? 'Order Delivered!'
+                                    : 'Arriving in ~${data.calculatedEtaMinutes} mins',
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w900,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                              Text(
+                                data.status.replaceAll('_', ' '),
+                                style: TextStyle(color: Colors.grey.shade700, fontSize: 13, fontWeight: FontWeight.w600),
+                              ),
+                            ],
                           ),
-                          Text(
-                            data.status.replaceAll('_', ' '),
-                            style: TextStyle(color: Colors.grey.shade700, fontSize: 13, fontWeight: FontWeight.w600),
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withValues(alpha: 0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.directions_bike_rounded, color: AppColors.primary, size: 24),
                           ),
                         ],
                       ),
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.directions_bike_rounded, color: AppColors.primary, size: 24),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          _buildGpsStatusChip(data),
+                          _buildRouteStatusChip(),
+                        ],
                       ),
                     ],
                   ),
                 ).animate().fadeIn().slideY(begin: -0.1),
               ),
+
+              // Floating Map Controls: Center on Rider & Fit Whole Route
+              Positioned(
+                bottom: 16,
+                right: 16,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FloatingActionButton.small(
+                      heroTag: 'fit_bounds_btn',
+                      backgroundColor: Colors.white,
+                      foregroundColor: AppColors.textPrimaryLight,
+                      tooltip: 'Show whole route',
+                      onPressed: _fitMapBounds,
+                      child: const Icon(Icons.crop_free_rounded, size: 20),
+                    ),
+                    const SizedBox(height: 8),
+                    FloatingActionButton.small(
+                      heroTag: 'center_rider_btn',
+                      backgroundColor: data.riderLocation != null ? AppColors.primary : Colors.grey.shade400,
+                      foregroundColor: Colors.white,
+                      tooltip: 'Center on Rider',
+                      onPressed: _centerOnRider,
+                      child: const Icon(Icons.my_location_rounded, size: 20),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Unconfigured Location Warning Banner
+              if (data.restaurantLocation == null || data.deliveryLocation == null)
+                Positioned(
+                  bottom: 16,
+                  left: 16,
+                  right: 80,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade900.withValues(alpha: 0.9),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(Icons.warning_amber_rounded, size: 16, color: Colors.white),
+                        SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Map coordinates not fully configured for this order.',
+                            style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
