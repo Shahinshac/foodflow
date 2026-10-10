@@ -281,17 +281,27 @@ void main() {
       );
     });
 
-    test('Unauthenticated guest navigation allows / and /restaurant/:id and redirects /splash to / on web', () {
-      // Splash screen routes guest to / on web
-      final splashRedirect = computeAppRedirect(
+    test('Unauthenticated users require login: / and /restaurant/:id and /splash redirect to /login', () {
+      // Splash screen routes to /login on both web and mobile
+      final splashRedirectWeb = computeAppRedirect(
         isLoading: false,
         isAuthenticated: false,
         role: null,
         location: '/splash',
         isWeb: true,
       );
-      expect(splashRedirect, '/');
-      // Subsequent check at / terminates at null on web
+      expect(splashRedirectWeb, '/login');
+
+      final splashRedirectMobile = computeAppRedirect(
+        isLoading: false,
+        isAuthenticated: false,
+        role: null,
+        location: '/splash',
+        isWeb: false,
+      );
+      expect(splashRedirectMobile, '/login');
+
+      // Unauthenticated customer home / routes to /login
       expect(
         computeAppRedirect(
           isLoading: false,
@@ -300,18 +310,6 @@ void main() {
           location: '/',
           isWeb: true,
         ),
-        isNull,
-      );
-
-      // On mobile (Samsung Android app), unauthenticated launch routes to /login
-      expect(
-        computeAppRedirect(
-          isLoading: false,
-          isAuthenticated: false,
-          role: null,
-          location: '/splash',
-          isWeb: false,
-        ),
         '/login',
       );
       expect(
@@ -325,7 +323,7 @@ void main() {
         '/login',
       );
 
-      // Public routes allowed
+      // Unauthenticated restaurant detail routes to /login (no guest browsing)
       expect(
         computeAppRedirect(
           isLoading: false,
@@ -334,6 +332,18 @@ void main() {
           location: '/restaurant/42',
           isWeb: true,
         ),
+        '/login',
+      );
+
+      // Dedicated auth routes terminate at null to display login/register UI
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/login',
+          isWeb: true,
+        ),
         isNull,
       );
       expect(
@@ -341,7 +351,7 @@ void main() {
           isLoading: false,
           isAuthenticated: false,
           role: null,
-          location: '/login',
+          location: '/register',
           isWeb: true,
         ),
         isNull,
@@ -1059,7 +1069,7 @@ void main() {
         '/login',
       );
 
-      // 2. Public / guest browsing / stays at /
+      // 2. Customer home / redirects to /login because guest access is disabled
       expect(
         computeAppRedirect(
           isLoading: false,
@@ -1068,7 +1078,7 @@ void main() {
           location: '/',
           isWeb: true,
         ),
-        isNull,
+        '/login',
       );
 
       // 3. Admin login route stays on /admin

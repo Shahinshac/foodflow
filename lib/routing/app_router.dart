@@ -72,26 +72,15 @@ String? computeAppRedirect({
       location == '/delivery-dashboard' ||
       location == '/delivery-login';
 
-  // 2. Unauthenticated User Flow (Guest browsing, Customer Login, Dedicated Staff Logins)
+  // 2. Unauthenticated User Flow (Guest Access Completely Disabled):
+  // Users must be authenticated before accessing customer routes (home, restaurants, cart, checkout, orders, etc.)
   if (!isAuthenticated) {
-    if (!isWeb) {
-      // Mobile app launch when unauthenticated directly displays the Login screen
-      if (location == '/splash' || location == '/') {
-        return '/login';
-      }
-      if (isLoginRoute || isDeliveryRoute || isAdminRoute || isOwnerRoute) {
-        return null;
-      }
-      return '/login';
+    // Dedicated staff & auth URLs show their respective login/register screens directly without loops
+    if (isLoginRoute || isAdminRoute || isOwnerRoute || isDeliveryRoute) {
+      return null; // Allowed directly to render dedicated login/registration screen
     }
-    if (location == '/splash') {
-      return '/'; // Guests land on customer home on web
-    }
-    // Dedicated staff URLs show their respective logins directly without redirect loops
-    if (isPublicBrowseRoute || isLoginRoute || isAdminRoute || isOwnerRoute || isDeliveryRoute) {
-      return null; // Allowed directly
-    }
-    return '/login'; // Protected customer routes require login
+    // Any customer / protected route (/, /restaurant/:id, /cart, /checkout, /orders, /splash, etc.) redirects to /login
+    return '/login';
   }
 
   // 3. Authenticated User Flow

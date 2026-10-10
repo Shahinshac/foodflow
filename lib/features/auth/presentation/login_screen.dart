@@ -515,16 +515,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 ],
                               ),
 
-                              // Bottom Guest Link
-                              InkWell(
-                                onTap: () => context.go('/'),
-                                child: Row(
-                                  children: const [
-                                    Icon(Icons.arrow_back_rounded, color: Colors.white70, size: 16),
-                                    SizedBox(width: 8),
-                                    Text('Continue as Guest', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
-                                  ],
-                                ),
+                              // Platform Trust Badge
+                              Row(
+                                children: const [
+                                  Icon(Icons.shield_outlined, color: Colors.white60, size: 16),
+                                  SizedBox(width: 8),
+                                  Text('Secure & Authorized Access Only', style: TextStyle(color: Colors.white60, fontSize: 13, fontWeight: FontWeight.w600)),
+                                ],
                               ),
                             ],
                           ),

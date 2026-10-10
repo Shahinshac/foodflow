@@ -215,6 +215,7 @@ class AuthRepository {
       final response = await apiClient.dio.get('/auth/me');
       return UserModel.fromJson(response.data);
     } catch (_) {
+      await logout();
       return null;
     }
   }
