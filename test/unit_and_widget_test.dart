@@ -281,17 +281,39 @@ void main() {
       );
     });
 
-    test('Unauthenticated guest navigation allows / and /restaurant/:id and redirects /splash to /', () {
-      // Splash screen routes guest to /
+    test('Unauthenticated guest navigation allows / and /restaurant/:id and redirects /splash to / on web', () {
+      // Splash screen routes guest to / on web
       final splashRedirect = computeAppRedirect(
         isLoading: false,
         isAuthenticated: false,
         role: null,
         location: '/splash',
-        isWeb: false,
+        isWeb: true,
       );
       expect(splashRedirect, '/');
-      // Subsequent check at / terminates at null
+      // Subsequent check at / terminates at null on web
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/',
+          isWeb: true,
+        ),
+        isNull,
+      );
+
+      // On mobile (Samsung Android app), unauthenticated launch routes to /login
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/splash',
+          isWeb: false,
+        ),
+        '/login',
+      );
       expect(
         computeAppRedirect(
           isLoading: false,
@@ -300,7 +322,7 @@ void main() {
           location: '/',
           isWeb: false,
         ),
-        isNull,
+        '/login',
       );
 
       // Public routes allowed
@@ -310,7 +332,7 @@ void main() {
           isAuthenticated: false,
           role: null,
           location: '/restaurant/42',
-          isWeb: false,
+          isWeb: true,
         ),
         isNull,
       );
@@ -320,7 +342,7 @@ void main() {
           isAuthenticated: false,
           role: null,
           location: '/login',
-          isWeb: false,
+          isWeb: true,
         ),
         isNull,
       );

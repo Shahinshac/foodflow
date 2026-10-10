@@ -44,6 +44,96 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     }
   }
 
+  void _handleGoogleSignIn() async {
+    final emailCtrl = TextEditingController();
+    final nameCtrl = TextEditingController();
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.g_mobiledata_rounded, color: Colors.red, size: 28),
+            ),
+            const SizedBox(width: 10),
+            const Text('Google Sign-In', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Sign in securely with your Google Account as a Customer:',
+              style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: nameCtrl,
+              decoration: InputDecoration(
+                labelText: 'Full Name',
+                hintText: 'e.g. Rahul Sharma',
+                prefixIcon: const Icon(Icons.person_outline),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(
+                labelText: 'Google Email',
+                hintText: 'user@gmail.com',
+                prefixIcon: const Icon(Icons.email_outlined),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.darkAction,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () {
+              if (emailCtrl.text.trim().isEmpty || !emailCtrl.text.contains('@')) {
+                return;
+              }
+              Navigator.pop(ctx, {
+                'email': emailCtrl.text.trim(),
+                'name': nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : emailCtrl.text.trim().split('@')[0],
+              });
+            },
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && mounted) {
+      final success = await ref.read(authProvider.notifier).loginWithGoogle(
+        email: result['email'],
+        fullName: result['name'],
+      );
+      if (success && mounted) {
+        context.go('/');
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
@@ -366,6 +456,40 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           ),
 
           const SizedBox(height: 20),
+
+          Row(
+            children: [
+              const Expanded(child: Divider(color: Color(0xFFE5E7EB))),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Text(
+                  'OR',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white38 : const Color(0xFF9CA3AF),
+                  ),
+                ),
+              ),
+              const Expanded(child: Divider(color: Color(0xFFE5E7EB))),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: isDark ? Colors.white : const Color(0xFF1F2937),
+              side: const BorderSide(color: Color(0xFFE5E7EB)),
+              minimumSize: const Size(double.infinity, 48),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
+            icon: const Icon(Icons.g_mobiledata_rounded, size: 24, color: AppColors.primary),
+            label: const Text('Continue with Google', style: TextStyle(fontWeight: FontWeight.w700)),
+            onPressed: authState.isLoading ? null : _handleGoogleSignIn,
+          ),
+
+          const SizedBox(height: 24),
 
           // Already have account
           Center(

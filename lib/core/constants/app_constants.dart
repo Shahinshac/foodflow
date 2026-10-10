@@ -24,6 +24,11 @@ class AppConstants {
   static const String authTokenKey = 'auth_token';
   static const String userKey = 'user_data';
 
+  // Google OAuth Client IDs
+  static const String googleWebClientId = '946437330680-9r4mutghresee1heq36ailmtrh7drtv1.apps.googleusercontent.com';
+  static const String googleAndroidClientId = '946437330680-87ma1tf4dg56rcp0mk4moi00r7f3159m.apps.googleusercontent.com';
+  static const String googleIosClientId = '946437330680-drp10qt4b720rhdl6h19uruj1pqirsat.apps.googleusercontent.com';
+
   /// Resolves relative upload paths to full accessible URLs for image loading
   static String resolveImageUrl(String? url) {
     if (url == null || url.trim().isEmpty) {

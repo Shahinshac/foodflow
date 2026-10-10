@@ -74,8 +74,18 @@ String? computeAppRedirect({
 
   // 2. Unauthenticated User Flow (Guest browsing, Customer Login, Dedicated Staff Logins)
   if (!isAuthenticated) {
+    if (!isWeb) {
+      // Mobile app launch when unauthenticated directly displays the Login screen
+      if (location == '/splash' || location == '/') {
+        return '/login';
+      }
+      if (isLoginRoute || isDeliveryRoute || isAdminRoute || isOwnerRoute) {
+        return null;
+      }
+      return '/login';
+    }
     if (location == '/splash') {
-      return '/'; // Guests land on customer home
+      return '/'; // Guests land on customer home on web
     }
     // Dedicated staff URLs show their respective logins directly without redirect loops
     if (isPublicBrowseRoute || isLoginRoute || isAdminRoute || isOwnerRoute || isDeliveryRoute) {

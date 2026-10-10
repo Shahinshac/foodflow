@@ -422,3 +422,28 @@ class OwnerAnalyticsResponse(BaseModel):
     cancellation_rate_percent: float
     order_status_distribution: Dict[str, int]
     best_selling_items: List[Dict[str, Any]]
+
+# Google Auth
+class GoogleAuthRequest(BaseModel):
+    id_token: Optional[str] = None
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+# Admin Profile & Password Management
+class AdminProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+
+class AdminPasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+# Audit Logs
+class AuditLogResponse(BaseModel):
+    id: int
+    admin_id: Optional[int] = None
+    action: str
+    details: Optional[str] = None
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)

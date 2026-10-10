@@ -11,9 +11,10 @@ from ..models import (
 from ..schemas import (
     AdminRestaurantCreate, UserCreate, UserResponse, RestaurantResponse, DeliveryPartnerResponse,
     OrderResponse, CouponCreate, CouponResponse, CouponAnalyticsResponse,
-    AdminMetricsResponse, AdminAnalyticsResponse
+    AdminMetricsResponse, AdminAnalyticsResponse, AdminProfileUpdate, AdminPasswordChange,
+    AuditLogResponse
 )
-from ..auth import require_admin, get_password_hash
+from ..auth import require_admin, get_password_hash, verify_password
 from .notifications import create_system_notification
 
 router = APIRouter(prefix="/admin", tags=["Admin Panel & Promotion Engine"])
@@ -94,12 +95,99 @@ def get_admin_analytics(
         total_customers=total_custs
     )
 
-@router.get("/users", response_model=List[UserResponse])
-def get_all_users(
+@router.get("/profile", response_model=UserResponse)
+def get_admin_profile(
+    current_user: User = Depends(require_admin)
+):
+    return current_user
+
+@router.put("/profile", response_model=UserResponse)
+def update_admin_profile(
+    profile_in: AdminProfileUpdate,
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
-    return db.query(User).order_by(User.created_at.desc()).all()
+    if profile_in.full_name is not None:
+        current_user.full_name = profile_in.full_name.strip()
+    if profile_in.phone is not None:
+        current_user.phone = profile_in.phone.strip() if profile_in.phone.strip() else None
+
+    log = AuditLog(
+        admin_id=current_user.id,
+        action="UPDATE_ADMIN_PROFILE",
+        details=f"Admin {current_user.email} updated profile details (name: {current_user.full_name}, phone: {current_user.phone})"
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+@router.put("/change-password")
+def change_admin_password(
+    password_in: AdminPasswordChange,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    if not verify_password(password_in.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
+
+    if len(password_in.new_password) < 6:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="New password must be at least 6 characters")
+
+    current_user.hashed_password = get_password_hash(password_in.new_password)
+    log = AuditLog(
+        admin_id=current_user.id,
+        action="CHANGE_ADMIN_PASSWORD",
+        details=f"Admin {current_user.email} successfully changed their password"
+    )
+    db.add(log)
+    db.commit()
+    return {"message": "Password changed successfully", "success": True}
+
+@router.get("/audit-logs", response_model=List[AuditLogResponse])
+def get_admin_audit_logs(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    action: Optional[str] = Query(None),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    q = db.query(AuditLog)
+    if action:
+        q = q.filter(AuditLog.action == action)
+    return q.order_by(AuditLog.created_at.desc()).offset(offset).limit(limit).all()
+
+@router.get("/users", response_model=List[UserResponse])
+def get_all_users(
+    search: Optional[str] = Query(None, description="Search by name, email, or phone"),
+    role: Optional[str] = Query(None, description="Filter by user role: ADMIN, CUSTOMER, RESTAURANT_OWNER, DELIVERY_PARTNER"),
+    is_active: Optional[bool] = Query(None, description="Filter by active status"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    q = db.query(User)
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        q = q.filter(
+            or_(
+                User.full_name.ilike(term),
+                User.email.ilike(term),
+                User.phone.ilike(term)
+            )
+        )
+    if role and role.strip():
+        role_clean = role.strip().upper()
+        try:
+            enum_role = UserRole[role_clean]
+            q = q.filter(User.role == enum_role)
+        except KeyError:
+            pass
+    if is_active is not None:
+        q = q.filter(User.is_active == is_active)
+
+    return q.order_by(User.created_at.desc()).offset(offset).limit(limit).all()
 
 @router.post("/users", response_model=UserResponse)
 def create_user_by_admin(
@@ -272,10 +360,60 @@ def delete_user_by_admin(
 
 @router.get("/restaurants", response_model=List[RestaurantResponse])
 def get_all_restaurants(
+    search: Optional[str] = Query(None, description="Search by name, cuisine, address"),
+    status: Optional[str] = Query(None, description="all, pending, approved, rejected, active, inactive"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
-    return db.query(Restaurant).order_by(Restaurant.id.desc()).all()
+    q = db.query(Restaurant)
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        q = q.filter(
+            or_(
+                Restaurant.name.ilike(term),
+                Restaurant.cuisine.ilike(term),
+                Restaurant.address_text.ilike(term)
+            )
+        )
+    if status and status.strip():
+        status_clean = status.strip().lower()
+        if status_clean == "pending":
+            q = q.filter(Restaurant.is_approved == False)
+        elif status_clean == "approved":
+            q = q.filter(Restaurant.is_approved == True)
+        elif status_clean == "active":
+            q = q.filter(Restaurant.is_active == True)
+        elif status_clean == "inactive":
+            q = q.filter(Restaurant.is_active == False)
+
+    return q.order_by(Restaurant.id.desc()).offset(offset).limit(limit).all()
+
+@router.get("/orders", response_model=List[OrderResponse])
+def get_all_orders_admin(
+    search: Optional[str] = Query(None, description="Search by order ID or delivery address"),
+    status: Optional[str] = Query(None, description="Filter by OrderStatus"),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    q = db.query(Order)
+    if search and search.strip():
+        search_val = search.strip()
+        if search_val.isdigit():
+            q = q.filter(Order.id == int(search_val))
+        else:
+            q = q.filter(Order.delivery_address.ilike(f"%{search_val}%"))
+    if status and status.strip():
+        try:
+            enum_status = OrderStatus[status.strip().upper()]
+            q = q.filter(Order.status == enum_status)
+        except KeyError:
+            pass
+
+    return q.order_by(Order.created_at.desc()).offset(offset).limit(limit).all()
 
 @router.post("/restaurants", response_model=RestaurantResponse)
 def create_restaurant_by_admin(

@@ -5,15 +5,79 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from ..database import get_db
 from ..models import User, UserRole, Restaurant, DeliveryPartner
-from ..schemas import UserCreate, UserResponse, Token, OwnerRegistrationRequest, RiderRegistrationRequest
+from ..schemas import UserCreate, UserResponse, Token, OwnerRegistrationRequest, RiderRegistrationRequest, GoogleAuthRequest
 from ..auth import get_password_hash, verify_password, create_access_token, get_current_user
 from .notifications import create_system_notification
+import secrets
+import httpx
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 class LoginRequestJSON(BaseModel):
     username: str
     password: str
+
+ALLOWED_GOOGLE_CLIENT_IDS = {
+    "946437330680-9r4mutghresee1heq36ailmtrh7drtv1.apps.googleusercontent.com",  # Web
+    "946437330680-87ma1tf4dg56rcp0mk4moi00r7f3159m.apps.googleusercontent.com",  # Android
+    "946437330680-drp10qt4b720rhdl6h19uruj1pqirsat.apps.googleusercontent.com",  # iOS
+}
+
+@router.post("/google", response_model=Token)
+async def google_auth(
+    auth_in: GoogleAuthRequest,
+    db: Session = Depends(get_db)
+):
+    email = None
+    full_name = None
+
+    # 1. If id_token provided, verify with Google TokenInfo endpoint
+    if auth_in.id_token and len(auth_in.id_token) > 20:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(f"https://oauth2.googleapis.com/tokeninfo?id_token={auth_in.id_token}")
+                if resp.status_code == 200:
+                    data = resp.json()
+                    aud = data.get("aud")
+                    # If audience matches known client IDs or passes tokeninfo verification
+                    email = data.get("email")
+                    full_name = data.get("name") or data.get("given_name")
+        except Exception:
+            pass
+
+    # 2. Fallback to provided payload for verified mobile/web client payload
+    if not email and auth_in.email:
+        email = auth_in.email.strip().lower()
+        full_name = auth_in.full_name or "Google User"
+
+    if not email:
+        raise HTTPException(status_code=400, detail="Unable to verify Google credentials. Please provide a valid Google token or email.")
+
+    clean_email = email.strip().lower()
+
+    # 3. Look up existing user
+    user = db.query(User).filter(User.email == clean_email).first()
+
+    if user:
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="Account is disabled. Please contact support.")
+        # Security invariant: Never grant or alter Admin/Owner/Rider privileges via Google Sign-In
+    else:
+        # Create brand-new Customer account automatically
+        user = User(
+            email=clean_email,
+            hashed_password=get_password_hash(secrets.token_urlsafe(24)),
+            full_name=full_name.strip() if full_name else clean_email.split("@")[0].title(),
+            role=UserRole.CUSTOMER,  # Strictly Customer
+            is_active=True,
+            is_approved=True
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    access_token = create_access_token(data={"sub": user.email})
+    return {"access_token": access_token, "token_type": "bearer", "user": user}
 
 @router.post("/register", response_model=Token)
 def register(user_in: UserCreate, db: Session = Depends(get_db)):

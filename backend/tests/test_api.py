@@ -1239,4 +1239,95 @@ def test_customer_post_delivery_rating_and_review():
     db.close()
 
 
+def test_google_auth_and_role_protection():
+    db = TestingSessionLocal()
+    resp = client.post(
+        "/auth/google",
+        json={
+            "email": "googlenewuser@example.com",
+            "full_name": "Google New User",
+            "avatar_url": "https://lh3.googleusercontent.com/a/photo.jpg"
+        }
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "access_token" in data
+    assert data["token_type"] == "bearer"
+
+    created = db.query(User).filter(User.email == "googlenewuser@example.com").first()
+    assert created is not None
+    assert created.role == UserRole.CUSTOMER
+    assert created.full_name == "Google New User"
+
+    db.close()
+
+
+def test_admin_profile_and_password_and_audit_logs():
+    db = TestingSessionLocal()
+    admin = User(
+        email="superadmin_test@foodflow.com",
+        hashed_password=get_password_hash("oldadminsecret"),
+        full_name="Super Admin Initial",
+        phone="+919876543210",
+        role=UserRole.ADMIN,
+        is_active=True,
+        is_approved=True
+    )
+    db.add(admin)
+    db.commit()
+
+    token = create_access_token(data={"sub": admin.email, "role": "ADMIN"})
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 1. GET /admin/profile
+    prof_resp = client.get("/admin/profile", headers=headers)
+    assert prof_resp.status_code == 200
+    assert prof_resp.json()["email"] == "superadmin_test@foodflow.com"
+    assert prof_resp.json()["full_name"] == "Super Admin Initial"
+
+    # 2. PUT /admin/profile
+    update_resp = client.put(
+        "/admin/profile",
+        json={"full_name": "Super Admin Updated", "phone": "+919998887776"},
+        headers=headers
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.json()["full_name"] == "Super Admin Updated"
+    assert update_resp.json()["phone"] == "+919998887776"
+
+    # 3. PUT /admin/change-password
+    wrong_pwd = client.put(
+        "/admin/change-password",
+        json={"current_password": "wrongpassword", "new_password": "newadminsecret"},
+        headers=headers
+    )
+    assert wrong_pwd.status_code == 400
+
+    good_pwd = client.put(
+        "/admin/change-password",
+        json={"current_password": "oldadminsecret", "new_password": "newadminsecret"},
+        headers=headers
+    )
+    assert good_pwd.status_code == 200
+    assert good_pwd.json()["success"] is True
+
+    login_new = client.post("/auth/login", json={"username": admin.email, "password": "newadminsecret"})
+    assert login_new.status_code == 200
+
+    # 4. GET /admin/audit-logs
+    logs_resp = client.get("/admin/audit-logs", headers=headers)
+    assert logs_resp.status_code == 200
+    logs = logs_resp.json()
+    assert len(logs) >= 2
+    actions = [l["action"] for l in logs]
+    assert "UPDATE_ADMIN_PROFILE" in actions
+    assert "CHANGE_ADMIN_PASSWORD" in actions
+
+    # 5. GET /admin/orders
+    orders_resp = client.get("/admin/orders", headers=headers)
+    assert orders_resp.status_code == 200
+
+    db.close()
+
+
 

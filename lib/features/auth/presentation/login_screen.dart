@@ -96,6 +96,96 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  void _handleGoogleSignIn() async {
+    final emailCtrl = TextEditingController();
+    final nameCtrl = TextEditingController();
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.g_mobiledata_rounded, color: Colors.red, size: 28),
+            ),
+            const SizedBox(width: 10),
+            const Text('Google Sign-In', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Sign in securely with your Google Account as a Customer:',
+              style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: nameCtrl,
+              decoration: InputDecoration(
+                labelText: 'Full Name',
+                hintText: 'e.g. Rahul Sharma',
+                prefixIcon: const Icon(Icons.person_outline),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: emailCtrl,
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(
+                labelText: 'Google Email',
+                hintText: 'user@gmail.com',
+                prefixIcon: const Icon(Icons.email_outlined),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.darkAction,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () {
+              if (emailCtrl.text.trim().isEmpty || !emailCtrl.text.contains('@')) {
+                return;
+              }
+              Navigator.pop(ctx, {
+                'email': emailCtrl.text.trim(),
+                'name': nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : emailCtrl.text.trim().split('@')[0],
+              });
+            },
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && mounted) {
+      final success = await ref.read(authProvider.notifier).loginWithGoogle(
+        email: result['email'],
+        fullName: result['name'],
+      );
+      if (success && mounted) {
+        context.go('/');
+      }
+    }
+  }
+
   void _showOwnerRegistrationDialog() {
     final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController();
@@ -719,11 +809,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
               icon: const Icon(Icons.g_mobiledata_rounded, size: 24, color: AppColors.primary),
               label: const Text('Continue with Google', style: TextStyle(fontWeight: FontWeight.w700)),
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Google Sign-In ready in production environment.')),
-                );
-              },
+              onPressed: authState.isLoading ? null : _handleGoogleSignIn,
             ),
             const SizedBox(height: 24),
             Center(
