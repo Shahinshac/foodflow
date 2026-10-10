@@ -36,13 +36,17 @@ class ApiClient {
           return handler.next(options);
         },
         onError: (DioException e, handler) async {
-          // If 401 Unauthorized, safely clear stale credentials to prevent loop
+          // If 401 Unauthorized on authentication verification endpoints, safely clear stale credentials
           if (e.response?.statusCode == 401) {
-            try {
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.remove(AppConstants.authTokenKey);
-              await prefs.remove(AppConstants.userKey);
-            } catch (_) {}
+            final path = e.requestOptions.path;
+            final isAuthVerification = path.contains('/auth/me') || path.contains('/auth/refresh');
+            if (isAuthVerification) {
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.remove(AppConstants.authTokenKey);
+                await prefs.remove(AppConstants.userKey);
+              } catch (_) {}
+            }
           }
           return handler.next(e);
         },

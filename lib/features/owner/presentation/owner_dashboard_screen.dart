@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -52,20 +54,50 @@ class OwnerDashboardScreen extends ConsumerStatefulWidget {
   ConsumerState<OwnerDashboardScreen> createState() => _OwnerDashboardScreenState();
 }
 
-class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> with SingleTickerProviderStateMixin {
+class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
+  Timer? _refreshTimer;
+  DateTime? _lastBackPressTime;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 5, vsync: this);
     _tabController.addListener(() {
       if (mounted) setState(() {});
     });
+    _startPolling();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startPolling();
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _stopPolling();
+    }
+  }
+
+  void _startPolling() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted) return;
+      ref.invalidate(ownerOrdersProvider);
+      ref.invalidate(ownerRestaurantProvider);
+    });
+  }
+
+  void _stopPolling() {
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stopPolling();
     _tabController.dispose();
     super.dispose();
   }
@@ -292,179 +324,355 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
     );
   }
 
-  void _showAddFoodDialog() {
+  void _showAddFoodDialog() => _showFoodFormDialog();
+
+  void _showEditFoodDialog(FoodItemModel food) => _showFoodFormDialog(existingFood: food);
+
+  void _showFoodFormDialog({FoodItemModel? existingFood}) {
+    final isEditing = existingFood != null;
     final formKey = GlobalKey<FormState>();
-    final nameController = TextEditingController();
-    final descController = TextEditingController();
-    final priceController = TextEditingController();
-    bool isVeg = true;
-    String? uploadedImageUrl;
+    final nameController = TextEditingController(text: existingFood?.name ?? '');
+    final descController = TextEditingController(text: existingFood?.description ?? '');
+    final basePrice = existingFood != null ? (existingFood.pricePaise / 100).toStringAsFixed(0) : '';
+    final priceController = TextEditingController(text: basePrice);
+
+    bool isVeg = existingFood?.isVeg ?? true;
+    String? uploadedImageUrl = existingFood?.imageUrl;
     bool isUploading = false;
+
+    bool hasPortions = existingFood?.portions != null && existingFood!.portions!.isNotEmpty;
+    bool quarterOverridden = isEditing;
+    bool halfOverridden = isEditing;
+    bool threeQuarterOverridden = isEditing;
+    bool fullOverridden = isEditing;
+
+    final quarterCtrl = TextEditingController(
+      text: existingFood?.portions?['QUARTER'] != null
+          ? (existingFood!.portions!['QUARTER']! / 100).toStringAsFixed(0)
+          : '',
+    );
+    final halfCtrl = TextEditingController(
+      text: existingFood?.portions?['HALF'] != null
+          ? (existingFood!.portions!['HALF']! / 100).toStringAsFixed(0)
+          : '',
+    );
+    final threeQuarterCtrl = TextEditingController(
+      text: existingFood?.portions?['THREE_QUARTER'] != null
+          ? (existingFood!.portions!['THREE_QUARTER']! / 100).toStringAsFixed(0)
+          : '',
+    );
+    final fullCtrl = TextEditingController(
+      text: existingFood?.portions?['FULL'] != null
+          ? (existingFood!.portions!['FULL']! / 100).toStringAsFixed(0)
+          : basePrice,
+    );
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(
-        builder: (context, setModalState) => Container(
-          padding: EdgeInsets.only(
-            top: 24,
-            left: 24,
-            right: 24,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-          ),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Add New Food Item', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                      IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: nameController,
-                    decoration: const InputDecoration(labelText: 'Dish Name', hintText: 'e.g. Tandoori Paneer Tikka'),
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: descController,
-                    decoration: const InputDecoration(labelText: 'Description', hintText: 'Ingredients, flavor notes, portion'),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: priceController,
-                          decoration: const InputDecoration(labelText: 'Price (in ₹)', prefixText: '₹ '),
-                          keyboardType: TextInputType.number,
-                          validator: (v) {
-                            if (v == null || v.trim().isEmpty) return 'Price required';
-                            if (double.tryParse(v) == null) return 'Invalid number';
-                            return null;
-                          },
+        builder: (context, setModalState) {
+          void updatePortionsFromBase(String val) {
+            final parsed = double.tryParse(val.trim());
+            if (parsed == null || parsed <= 0) return;
+            if (!quarterOverridden) {
+              quarterCtrl.text = (parsed * 0.35).round().toString();
+            }
+            if (!halfOverridden) {
+              halfCtrl.text = (parsed * 0.60).round().toString();
+            }
+            if (!threeQuarterOverridden) {
+              threeQuarterCtrl.text = (parsed * 0.85).round().toString();
+            }
+            if (!fullOverridden) {
+              fullCtrl.text = parsed.round().toString();
+            }
+          }
+
+          return Container(
+            padding: EdgeInsets.only(
+              top: 24,
+              left: 24,
+              right: 24,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+            ),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            child: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          isEditing ? 'Edit Dish Details' : 'Add New Food Item',
+                          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                         ),
-                      ),
-                      const SizedBox(width: 16),
-                      ChoiceChip(
-                        label: Text(isVeg ? 'VEG 🟢' : 'NON-VEG 🔴'),
-                        selected: true,
-                        selectedColor: isVeg ? AppColors.veg.withValues(alpha: 0.15) : AppColors.nonVeg.withValues(alpha: 0.15),
-                        onSelected: (_) => setModalState(() => isVeg = !isVeg),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      OutlinedButton.icon(
-                        icon: isUploading
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.add_a_photo_outlined),
-                        label: Text(uploadedImageUrl != null ? 'Image Attached' : 'Attach Photo'),
-                        onPressed: isUploading
-                            ? null
-                            : () async {
-                                final picker = ImagePicker();
-                                final img = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
-                                if (img != null) {
-                                  setModalState(() => isUploading = true);
-                                  try {
-                                    final uploadRepo = ref.read(uploadRepositoryProvider);
-                                    final url = await uploadRepo.uploadImage(img);
-                                    setModalState(() {
-                                      uploadedImageUrl = url;
-                                      isUploading = false;
-                                    });
-                                  } catch (e) {
-                                    setModalState(() => isUploading = false);
-                                    if (ctx.mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Upload failed: $e')),
-                                      );
-                                    }
-                                  }
-                                }
-                              },
-                      ),
-                      if (uploadedImageUrl != null) ...[
-                        const SizedBox(width: 12),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: CachedNetworkImage(
-                            imageUrl: AppConstants.resolveImageUrl(uploadedImageUrl),
-                            width: 44,
-                            height: 44,
-                            fit: BoxFit.cover,
+                        IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: nameController,
+                      decoration: const InputDecoration(labelText: 'Dish Name', hintText: 'e.g. Tandoori Paneer Tikka'),
+                      validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: descController,
+                      decoration: const InputDecoration(labelText: 'Description', hintText: 'Ingredients, flavor notes, portion'),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: priceController,
+                            decoration: const InputDecoration(labelText: 'Base / Full Price (₹)', prefixText: '₹ '),
+                            keyboardType: TextInputType.number,
+                            onChanged: (val) {
+                              if (hasPortions) {
+                                setModalState(() => updatePortionsFromBase(val));
+                              }
+                            },
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) return 'Price required';
+                              if (double.tryParse(v) == null) return 'Invalid number';
+                              return null;
+                            },
                           ),
                         ),
+                        const SizedBox(width: 16),
+                        ChoiceChip(
+                          label: Text(isVeg ? 'VEG 🟢' : 'NON-VEG 🔴'),
+                          selected: true,
+                          selectedColor: isVeg ? AppColors.veg.withValues(alpha: 0.15) : AppColors.nonVeg.withValues(alpha: 0.15),
+                          onSelected: (_) => setModalState(() => isVeg = !isVeg),
+                        ),
                       ],
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    ),
+                    const SizedBox(height: 16),
+                    // Portion Management Section
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.grey.shade200),
                       ),
-                      onPressed: () async {
-                        if (formKey.currentState!.validate()) {
-                          try {
-                            final priceRupees = double.parse(priceController.text.trim());
-                            final pricePaise = (priceRupees * 100).toInt();
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Portion-Based Pricing', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                                  Text(
+                                    'Quarter (35%), Half (60%), 3/4 (85%), Full (100%)',
+                                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                                  ),
+                                ],
+                              ),
+                              Switch(
+                                value: hasPortions,
+                                activeThumbColor: AppColors.primary,
+                                onChanged: (val) {
+                                  setModalState(() {
+                                    hasPortions = val;
+                                    if (hasPortions) {
+                                      updatePortionsFromBase(priceController.text);
+                                    }
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                          if (hasPortions) ...[
+                            const SizedBox(height: 12),
+                            const Divider(height: 1),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: quarterCtrl,
+                                    keyboardType: TextInputType.number,
+                                    decoration: const InputDecoration(labelText: 'Quarter (₹)', prefixText: '₹ '),
+                                    onChanged: (_) => quarterOverridden = true,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: halfCtrl,
+                                    keyboardType: TextInputType.number,
+                                    decoration: const InputDecoration(labelText: 'Half (₹)', prefixText: '₹ '),
+                                    onChanged: (_) => halfOverridden = true,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: threeQuarterCtrl,
+                                    keyboardType: TextInputType.number,
+                                    decoration: const InputDecoration(labelText: '3/4 Portion (₹)', prefixText: '₹ '),
+                                    onChanged: (_) => threeQuarterOverridden = true,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: TextFormField(
+                                    controller: fullCtrl,
+                                    keyboardType: TextInputType.number,
+                                    decoration: const InputDecoration(labelText: 'Full (₹)', prefixText: '₹ '),
+                                    onChanged: (_) => fullOverridden = true,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        OutlinedButton.icon(
+                          icon: isUploading
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.add_a_photo_outlined),
+                          label: Text(uploadedImageUrl != null ? 'Image Attached' : 'Attach Photo'),
+                          onPressed: isUploading
+                              ? null
+                              : () async {
+                                  final picker = ImagePicker();
+                                  final img = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+                                  if (img != null) {
+                                    setModalState(() => isUploading = true);
+                                    try {
+                                      final uploadRepo = ref.read(uploadRepositoryProvider);
+                                      final url = await uploadRepo.uploadImage(img);
+                                      setModalState(() {
+                                        uploadedImageUrl = url;
+                                        isUploading = false;
+                                      });
+                                    } catch (e) {
+                                      setModalState(() => isUploading = false);
+                                      if (ctx.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Upload failed: $e')),
+                                        );
+                                      }
+                                    }
+                                  }
+                                },
+                        ),
+                        if (uploadedImageUrl != null) ...[
+                          const SizedBox(width: 12),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: CachedNetworkImage(
+                              imageUrl: AppConstants.resolveImageUrl(uploadedImageUrl),
+                              width: 44,
+                              height: 44,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        onPressed: () async {
+                          if (formKey.currentState!.validate()) {
+                            try {
+                              final priceRupees = double.parse(priceController.text.trim());
+                              final pricePaise = (priceRupees * 100).toInt();
 
-                            final apiClient = ref.read(apiClientProvider);
-                            await apiClient.dio.post(
-                              '/owner/foods',
-                              data: {
+                              Map<String, int>? portionsMap;
+                              if (hasPortions) {
+                                final fullP = fullCtrl.text.isNotEmpty
+                                    ? (double.parse(fullCtrl.text.trim()) * 100).toInt()
+                                    : pricePaise;
+                                portionsMap = {'FULL': fullP};
+                                if (quarterCtrl.text.isNotEmpty) {
+                                  portionsMap['QUARTER'] = (double.parse(quarterCtrl.text.trim()) * 100).toInt();
+                                }
+                                if (halfCtrl.text.isNotEmpty) {
+                                  portionsMap['HALF'] = (double.parse(halfCtrl.text.trim()) * 100).toInt();
+                                }
+                                if (threeQuarterCtrl.text.isNotEmpty) {
+                                  portionsMap['THREE_QUARTER'] = (double.parse(threeQuarterCtrl.text.trim()) * 100).toInt();
+                                }
+                              }
+
+                              final apiClient = ref.read(apiClientProvider);
+                              final payload = {
                                 'name': nameController.text.trim(),
                                 'description': descController.text.trim(),
                                 'price_paise': pricePaise,
                                 'is_veg': isVeg,
                                 'image_url': uploadedImageUrl,
                                 'is_available': true,
-                              },
-                            );
-                            ref.invalidate(ownerFoodsProvider);
-                            if (ctx.mounted) {
-                              Navigator.pop(ctx);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Dish added to menu!'), backgroundColor: AppColors.veg),
-                              );
-                            }
-                          } catch (e) {
-                            if (ctx.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Failed to add dish: $e'), backgroundColor: AppColors.error),
-                              );
+                                'portions': portionsMap,
+                              };
+
+                              if (isEditing) {
+                                await apiClient.dio.put('/owner/foods/${existingFood.id}', data: payload);
+                              } else {
+                                await apiClient.dio.post('/owner/foods', data: payload);
+                              }
+
+                              ref.invalidate(ownerFoodsProvider);
+                              if (ctx.mounted) {
+                                Navigator.pop(ctx);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(isEditing ? 'Dish updated successfully!' : 'Dish added to menu!'),
+                                    backgroundColor: AppColors.veg,
+                                  ),
+                                );
+                              }
+                            } catch (e) {
+                              if (ctx.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Failed to save dish: $e'), backgroundColor: AppColors.error),
+                                );
+                              }
                             }
                           }
-                        }
-                      },
-                      child: const Text('Add Dish to Menu', style: TextStyle(fontWeight: FontWeight.bold)),
+                        },
+                        child: Text(isEditing ? 'Update Dish' : 'Add Dish to Menu', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -667,7 +875,31 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
     final promosAsync = ref.watch(ownerPromotionsProvider);
     final analyticsAsync = ref.watch(ownerAnalyticsProvider);
 
-    return restaurantAsync.when(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+
+        if (_tabController.index != 0) {
+          _tabController.animateTo(0);
+          return;
+        }
+
+        final now = DateTime.now();
+        if (_lastBackPressTime == null || now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+          _lastBackPressTime = now;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Press back again to exit FoodFlow'),
+              duration: Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        } else {
+          SystemNavigator.pop();
+        }
+      },
+      child: restaurantAsync.when(
       loading: () => Scaffold(
         backgroundColor: Colors.grey.shade50,
         appBar: AppBar(
@@ -930,11 +1162,34 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
                             ),
                           ),
                           title: Text(food.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                          subtitle: Text(CurrencyFormatter.formatPaise(food.pricePaise), style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600)),
-                          trailing: Switch(
-                            value: food.isAvailable,
-                            activeThumbColor: AppColors.veg,
-                            onChanged: (v) => _toggleFoodAvailability(food.id),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(CurrencyFormatter.formatPaise(food.pricePaise), style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600)),
+                              if (food.portions != null && food.portions!.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2.0),
+                                  child: Text(
+                                    'Portions: ${food.portions!.entries.map((e) => '${e.key}: ₹${e.value ~/ 100}').join(' | ')}',
+                                    style: const TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit_outlined, size: 20, color: AppColors.primary),
+                                tooltip: 'Edit dish',
+                                onPressed: () => _showEditFoodDialog(food),
+                              ),
+                              Switch(
+                                value: food.isAvailable,
+                                activeThumbColor: AppColors.veg,
+                                onChanged: (v) => _toggleFoodAvailability(food.id),
+                              ),
+                            ],
                           ),
                         ),
                       );
@@ -1262,14 +1517,33 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      ClipRRect(
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                        child: CachedNetworkImage(
-                          imageUrl: AppConstants.resolveImageUrl(restaurant.imageUrl),
-                          height: 180,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                        ),
+                      Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                            child: CachedNetworkImage(
+                              imageUrl: AppConstants.resolveImageUrl(restaurant.imageUrl),
+                              height: 180,
+                              width: double.infinity,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          Positioned(
+                            bottom: 12,
+                            right: 12,
+                            child: ElevatedButton.icon(
+                              onPressed: () => _updateCoverPhoto(restaurant),
+                              icon: const Icon(Icons.camera_alt_rounded, size: 16),
+                              label: const Text('Change Cover Photo', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.black.withValues(alpha: 0.7),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       Padding(
                         padding: const EdgeInsets.all(20.0),
@@ -1282,21 +1556,7 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
                                 Expanded(
                                   child: Text(restaurant.name, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
                                 ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: restaurant.isApproved ? AppColors.veg.withValues(alpha: 0.15) : Colors.orange.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    restaurant.isApproved ? 'APPROVED' : 'UNDER REVIEW',
-                                    style: TextStyle(
-                                      color: restaurant.isApproved ? AppColors.veg : Colors.orange.shade800,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ),
+                                _buildApprovalBadge(restaurant),
                               ],
                             ),
                             const SizedBox(height: 6),
@@ -1410,24 +1670,7 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
                             ],
                           ),
                         ),
-                        if (!restaurant.isApproved)
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                            color: Colors.amber.shade100,
-                            child: Row(
-                              children: [
-                                const Icon(Icons.hourglass_top_rounded, color: Colors.orange, size: 20),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    'Store under review. Super Admin will verify and activate your restaurant soon.',
-                                    style: TextStyle(color: Colors.brown.shade800, fontSize: 12, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                        _buildApprovalBanner(restaurant),
                         Expanded(child: tabViews),
                       ],
                     ),
@@ -1472,31 +1715,130 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
             ),
             body: Column(
               children: [
-                if (!restaurant.isApproved)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    color: Colors.amber.shade100,
-                    child: Row(
-                      children: [
-                        const Icon(Icons.hourglass_top_rounded, color: Colors.orange, size: 20),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Store under review. Super Admin will verify and activate your restaurant soon.',
-                            style: TextStyle(color: Colors.brown.shade800, fontSize: 12, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                _buildApprovalBanner(restaurant),
                 Expanded(child: tabViews),
               ],
             ),
           );
         },
       ),
+    ),
     );
+  }
+
+  Widget _buildApprovalBadge(RestaurantModel restaurant) {
+    if (restaurant.rejectionReason != null && restaurant.rejectionReason!.isNotEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppColors.error.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Text(
+          'REJECTED',
+          style: TextStyle(color: AppColors.error, fontWeight: FontWeight.bold, fontSize: 11),
+        ),
+      );
+    }
+    if (restaurant.isApproved) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppColors.veg.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Text(
+          'APPROVED',
+          style: TextStyle(color: AppColors.veg, fontWeight: FontWeight.bold, fontSize: 11),
+        ),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        'UNDER REVIEW',
+        style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 11),
+      ),
+    );
+  }
+
+  Widget _buildApprovalBanner(RestaurantModel restaurant) {
+    if (restaurant.rejectionReason != null && restaurant.rejectionReason!.isNotEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        color: AppColors.error.withValues(alpha: 0.12),
+        child: Row(
+          children: [
+            const Icon(Icons.cancel_outlined, color: AppColors.error, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Registration Rejected: "${restaurant.rejectionReason}". Please contact support to resolve.',
+                style: const TextStyle(color: AppColors.error, fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (!restaurant.isApproved) {
+      final dateText = restaurant.createdAt != null
+          ? ' (Submitted: ${restaurant.createdAt.toString().split(' ').first})'
+          : '';
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        color: Colors.amber.shade100,
+        child: Row(
+          children: [
+            const Icon(Icons.hourglass_top_rounded, color: Colors.orange, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Store under review. Super Admin will verify and activate your restaurant soon.$dateText',
+                style: TextStyle(color: Colors.brown.shade800, fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  void _updateCoverPhoto(RestaurantModel restaurant) async {
+    final picker = ImagePicker();
+    final img = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (img == null) return;
+
+    try {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Uploading cover photo...'), duration: Duration(seconds: 2)),
+        );
+      }
+      final uploadRepo = ref.read(uploadRepositoryProvider);
+      final url = await uploadRepo.uploadImage(img);
+      final apiClient = ref.read(apiClientProvider);
+      await apiClient.dio.put('/owner/restaurant/settings', data: {'image_url': url});
+      ref.invalidate(ownerRestaurantProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cover photo updated successfully!'), backgroundColor: AppColors.veg),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update cover photo: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
   }
 
   Widget _buildMetricCard(String title, String value, IconData icon, Color color) {

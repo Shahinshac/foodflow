@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/constants/app_constants.dart';
@@ -66,8 +68,11 @@ class AdminDashboardScreen extends ConsumerStatefulWidget {
   ConsumerState<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
 }
 
-class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> with SingleTickerProviderStateMixin {
+class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
+  Timer? _refreshTimer;
+  DateTime? _lastBackPressTime;
   final Set<int> _processingRestaurantIds = {};
   final Set<int> _processingUserIds = {};
 
@@ -86,11 +91,38 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 6, vsync: this);
+    _startPolling();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startPolling();
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _stopPolling();
+    }
+  }
+
+  void _startPolling() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (!mounted) return;
+      ref.invalidate(adminAnalyticsProvider);
+      ref.invalidate(adminOrdersProvider);
+    });
+  }
+
+  void _stopPolling() {
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stopPolling();
     _userSearchController.dispose();
     _restaurantSearchController.dispose();
     _orderSearchController.dispose();
@@ -1442,11 +1474,59 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
     final timeframe = ref.watch(adminTimeframeProvider);
     final promoFilter = ref.watch(adminPromotionsFilterProvider);
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isDesktop = constraints.maxWidth >= 900;
+    final oledTheme = ThemeData(
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: const Color(0xFF000000),
+      canvasColor: const Color(0xFF121212),
+      cardColor: const Color(0xFF121212),
+      dialogTheme: const DialogThemeData(backgroundColor: Color(0xFF121212)),
+      dividerColor: const Color(0xFF242424),
+      colorScheme: const ColorScheme.dark(
+        primary: Color(0xFFFF5722),
+        secondary: Color(0xFFFF7043),
+        surface: Color(0xFF121212),
+        onPrimary: Colors.white,
+        onSurface: Colors.white,
+        onSurfaceVariant: Color(0xFFB0B0B0),
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Color(0xFF121212),
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+    );
 
-        final tabViews = TabBarView(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+
+        if (_tabController.index != 0) {
+          _tabController.animateTo(0);
+          return;
+        }
+
+        final now = DateTime.now();
+        if (_lastBackPressTime == null || now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+          _lastBackPressTime = now;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Press back again to exit FoodFlow'),
+              duration: Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        } else {
+          SystemNavigator.pop();
+        }
+      },
+      child: Theme(
+      data: oledTheme,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isDesktop = constraints.maxWidth >= 900;
+
+          final tabViews = TabBarView(
           controller: _tabController,
           children: [
             // TAB 0: ADVANCED ANALYTICS & METRICS
@@ -2833,7 +2913,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
           ];
 
           return Scaffold(
-            backgroundColor: Colors.grey.shade50,
+            backgroundColor: const Color(0xFF000000),
             body: Row(
               children: [
                 DashboardSidebar(
@@ -2861,23 +2941,23 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
                         height: 64,
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         decoration: const BoxDecoration(
-                          color: Colors.white,
-                          border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
+                          color: Color(0xFF121212),
+                          border: Border(bottom: BorderSide(color: Color(0xFF242424))),
                         ),
                         child: Row(
                           children: [
                             Text(
                               _tabController.index < titles.length ? titles[_tabController.index] : 'Admin Portal',
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF111827)),
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Colors.white),
                             ),
                             const Spacer(),
                             IconButton(
                               tooltip: 'Admin Profile Settings',
-                              icon: const Icon(Icons.manage_accounts_outlined, color: AppColors.primary),
+                              icon: const Icon(Icons.manage_accounts_outlined, color: Color(0xFFFF5722)),
                               onPressed: _showAdminProfileDialog,
                             ),
                             IconButton(
-                              icon: const Icon(Icons.notifications_outlined),
+                              icon: const Icon(Icons.notifications_outlined, color: Colors.white),
                               onPressed: () => NotificationSheet.show(context),
                             ),
                             IconButton(
@@ -2898,33 +2978,33 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
         }
 
         return Scaffold(
-          backgroundColor: Colors.grey.shade50,
+          backgroundColor: const Color(0xFF000000),
           appBar: AppBar(
-            title: const Text('Admin System Portal', style: TextStyle(fontWeight: FontWeight.w900)),
-            backgroundColor: Colors.white,
+            title: const Text('Admin System Portal', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.white)),
+            backgroundColor: const Color(0xFF121212),
             surfaceTintColor: Colors.transparent,
             elevation: 0,
             actions: [
               IconButton(
                 tooltip: 'Profile Settings',
-                icon: const Icon(Icons.manage_accounts_outlined, color: AppColors.primary),
+                icon: const Icon(Icons.manage_accounts_outlined, color: Color(0xFFFF5722)),
                 onPressed: _showAdminProfileDialog,
               ),
               IconButton(
-                icon: const Icon(Icons.notifications_outlined),
+                icon: const Icon(Icons.notifications_outlined, color: Colors.white),
                 onPressed: () => NotificationSheet.show(context),
               ),
               IconButton(
-                icon: const Icon(Icons.logout_rounded),
+                icon: const Icon(Icons.logout_rounded, color: AppColors.error),
                 onPressed: () => ref.read(authProvider.notifier).logout(),
               ),
             ],
             bottom: TabBar(
               controller: _tabController,
               isScrollable: true,
-              labelColor: AppColors.primary,
-              unselectedLabelColor: const Color(0xFF4B5563),
-              indicatorColor: AppColors.primary,
+              labelColor: const Color(0xFFFF5722),
+              unselectedLabelColor: Colors.white70,
+              indicatorColor: const Color(0xFFFF5722),
               indicatorWeight: 3,
               indicatorSize: TabBarIndicatorSize.label,
               labelPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -2944,8 +3024,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
           body: tabViews,
         );
       },
-    );
-  }
+    ),
+  ),
+  );
+}
 
   Widget _buildUserRoleChip(String role, String label) {
     final isSelected = _userRoleFilter == role;
@@ -3054,15 +3136,19 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
   }
 
   Widget _buildMetricCard(String title, String val, IconData icon, Color color) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Container(
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.surfaceDark : Colors.white,
+        color: const Color(0xFF121212),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE5E7EB)),
-        boxShadow: AppColors.softShadow,
+        border: Border.all(color: const Color(0xFF242424)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.5),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3072,19 +3158,19 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
           const SizedBox(height: 8),
           Text(
             title,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 11,
-              color: isDark ? Colors.white70 : const Color(0xFF4B5563),
+              color: Colors.white70,
               fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             val,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w900,
-              color: isDark ? Colors.white : const Color(0xFF111827),
+              color: Colors.white,
             ),
           ),
         ],

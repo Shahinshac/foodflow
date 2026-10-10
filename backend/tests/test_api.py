@@ -772,7 +772,7 @@ def test_end_to_end_cross_role_order_lifecycle():
     )
     assert order_resp.status_code == 200
     order_id = order_resp.json()["id"]
-    assert order_resp.json()["status"] == "PLACED" or order_resp.json()["status"] == "CONFIRMED"
+    assert order_resp.json()["status"] in ["PLACED", "CONFIRMED", "RESTAURANT_CONFIRMED"]
 
     # Step 3: Owner transitions order to RESTAURANT_CONFIRMED -> PREPARING -> READY_FOR_PICKUP
     client.put(f"/owner/orders/{order_id}/status", json={"status": "RESTAURANT_CONFIRMED"}, headers=own_headers)

@@ -76,9 +76,15 @@ def get_available_orders_for_delivery(
     if not dp or not dp.is_online:
         return []
 
-    ready_orders = db.query(Order).filter(Order.status == OrderStatus.READY_FOR_PICKUP).all()
+    ready_orders = db.query(Order).filter(
+        Order.status.in_([OrderStatus.READY_FOR_PICKUP, OrderStatus.RESTAURANT_CONFIRMED, OrderStatus.PREPARING])
+    ).all()
+
     for ro in ready_orders:
-        existing = db.query(DeliveryAssignment).filter(DeliveryAssignment.order_id == ro.id).first()
+        existing = db.query(DeliveryAssignment).filter(
+            DeliveryAssignment.order_id == ro.id,
+            DeliveryAssignment.status != DeliveryAssignmentStatus.REJECTED
+        ).first()
         if not existing:
             new_assign = DeliveryAssignment(
                 order_id=ro.id,
@@ -86,10 +92,66 @@ def get_available_orders_for_delivery(
                 status=DeliveryAssignmentStatus.ASSIGNED
             )
             db.add(new_assign)
-            ro.status = OrderStatus.DELIVERY_PARTNER_ASSIGNED
             db.commit()
 
-    return db.query(DeliveryAssignment).filter(DeliveryAssignment.delivery_partner_id == dp.id).all()
+    # Return unassigned offers (ASSIGNED) or assignments already accepted by this rider
+    return db.query(DeliveryAssignment).filter(
+        (DeliveryAssignment.status == DeliveryAssignmentStatus.ASSIGNED) |
+        ((DeliveryAssignment.status != DeliveryAssignmentStatus.DELIVERED) & (DeliveryAssignment.delivery_partner_id == dp.id))
+    ).order_by(DeliveryAssignment.assigned_at.desc()).all()
+
+@router.post("/assignments/{assignment_id}/accept", response_model=DeliveryAssignmentResponse)
+def accept_delivery_assignment(
+    assignment_id: int,
+    current_user: User = Depends(require_delivery_partner),
+    db: Session = Depends(get_db)
+):
+    if not current_user.is_approved:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your delivery rider account is pending administrator approval"
+        )
+
+    dp = db.query(DeliveryPartner).filter(DeliveryPartner.user_id == current_user.id).first()
+    if not dp or not dp.is_online:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You must be online to accept delivery orders"
+        )
+
+    # Concurrency safe: atomic row lock to prevent race condition between multiple riders
+    assignment = db.query(DeliveryAssignment).filter(
+        DeliveryAssignment.id == assignment_id
+    ).with_for_update().first()
+
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Delivery offer not found")
+
+    # Idempotent retry by the same rider
+    if assignment.delivery_partner_id == dp.id and assignment.status in [
+        DeliveryAssignmentStatus.ACCEPTED,
+        DeliveryAssignmentStatus.ARRIVED_AT_RESTAURANT,
+        DeliveryAssignmentStatus.PICKED_UP,
+        DeliveryAssignmentStatus.OUT_FOR_DELIVERY,
+        DeliveryAssignmentStatus.ARRIVED_AT_CUSTOMER
+    ]:
+        return assignment
+
+    # If already claimed by another rider
+    if assignment.status != DeliveryAssignmentStatus.ASSIGNED and assignment.delivery_partner_id != dp.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Already accepted by another rider"
+        )
+
+    # Atomically assign exclusively to this rider
+    assignment.delivery_partner_id = dp.id
+    assignment.status = DeliveryAssignmentStatus.ACCEPTED
+    assignment.order.status = OrderStatus.DELIVERY_PARTNER_ASSIGNED
+    db.commit()
+    db.refresh(assignment)
+
+    return assignment
 
 @router.put("/assignments/{assignment_id}/status", response_model=DeliveryAssignmentResponse)
 def update_delivery_status(
@@ -108,12 +170,14 @@ def update_delivery_status(
     ).first()
 
     if not assignment:
-        raise HTTPException(status_code=404, detail="Assignment not found")
+        raise HTTPException(status_code=404, detail="Assignment not found or assigned to another rider")
 
     assignment.status = status_in.status
     order = assignment.order
 
-    if status_in.status == DeliveryAssignmentStatus.ARRIVED_AT_RESTAURANT:
+    if status_in.status == DeliveryAssignmentStatus.ACCEPTED:
+        order.status = OrderStatus.DELIVERY_PARTNER_ASSIGNED
+    elif status_in.status == DeliveryAssignmentStatus.ARRIVED_AT_RESTAURANT:
         order.status = OrderStatus.DELIVERY_PARTNER_AT_RESTAURANT
     elif status_in.status == DeliveryAssignmentStatus.PICKED_UP:
         assignment.picked_up_at = datetime.utcnow()

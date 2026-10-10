@@ -82,7 +82,7 @@ class FakeAuthNotifier extends AuthNotifier {
   }
 
   @override
-  Future<void> checkAuth() async {}
+  Future<void> checkAuth({bool isBackground = false}) async {}
 
   @override
   Future<void> logout() async {

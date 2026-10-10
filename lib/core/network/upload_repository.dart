@@ -9,10 +9,12 @@ class UploadRepository {
 
   Future<String> uploadImage(XFile file) async {
     try {
+      final bytes = await file.readAsBytes();
+      final filename = file.name.isNotEmpty ? file.name : 'upload_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final formData = FormData.fromMap({
-        'file': await MultipartFile.fromFile(
-          file.path,
-          filename: file.name,
+        'file': MultipartFile.fromBytes(
+          bytes,
+          filename: filename,
         ),
       });
 
@@ -21,7 +23,8 @@ class UploadRepository {
         data: formData,
       );
 
-      return response.data['url'];
+      final url = response.data['url'] as String;
+      return url;
     } catch (e) {
       throw Exception('Failed to upload image: $e');
     }

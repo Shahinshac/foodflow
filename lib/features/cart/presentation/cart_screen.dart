@@ -8,11 +8,33 @@ import '../../../core/widgets/error_and_empty_views.dart';
 import 'cart_providers.dart';
 import 'coupon_bottom_sheet.dart';
 
-class CartScreen extends ConsumerWidget {
+class CartScreen extends ConsumerStatefulWidget {
   const CartScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CartScreen> createState() => _CartScreenState();
+}
+
+class _CartScreenState extends ConsumerState<CartScreen> {
+  bool _isCheckingOut = false;
+
+  String _getPortionLabel(String portion) {
+    switch (portion.toUpperCase()) {
+      case 'QUARTER':
+        return 'Quarter';
+      case 'HALF':
+        return 'Half';
+      case 'THREE_QUARTER':
+        return '3/4 Portion';
+      case 'FULL':
+        return 'Full';
+      default:
+        return portion;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final cartAsync = ref.watch(cartSummaryProvider);
     final appliedCoupon = ref.watch(appliedCouponProvider);
     final couponDiscount = ref.watch(couponDiscountPaiseProvider);
@@ -176,46 +198,104 @@ class CartScreen extends ConsumerWidget {
                     separatorBuilder: (context, index) => Divider(height: 1, color: isDark ? AppColors.borderDark : AppColors.dividerLight),
                     itemBuilder: (context, index) {
                       final item = cart.items[index];
+                      final portionLabel = _getPortionLabel(item.portion);
                       return Padding(
-                        padding: const EdgeInsets.all(16.0),
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.all(2),
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: item.foodItem.isVeg ? AppColors.veg : AppColors.nonVeg,
-                                  width: 1.5,
-                                ),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Icon(
-                                Icons.circle,
-                                size: 8,
-                                color: item.foodItem.isVeg ? AppColors.veg : AppColors.nonVeg,
+                            // Dish Image thumbnail
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                width: 54,
+                                height: 54,
+                                color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04),
+                                child: item.foodItem.imageUrl != null && item.foodItem.imageUrl!.isNotEmpty
+                                    ? Image.network(
+                                        item.foodItem.imageUrl!,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) => Icon(
+                                          Icons.fastfood_rounded,
+                                          size: 26,
+                                          color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                                        ),
+                                      )
+                                    : Icon(
+                                        Icons.fastfood_rounded,
+                                        size: 26,
+                                        color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+                                      ),
                               ),
                             ),
                             const SizedBox(width: 12),
+                            // Details
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    item.foodItem.name,
-                                    style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(2),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(
+                                            color: item.foodItem.isVeg ? AppColors.veg : AppColors.nonVeg,
+                                            width: 1.5,
+                                          ),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Icon(
+                                          Icons.circle,
+                                          size: 7,
+                                          color: item.foodItem.isVeg ? AppColors.veg : AppColors.nonVeg,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          item.foodItem.name,
+                                          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                   const SizedBox(height: 4),
-                                  Text(
-                                    CurrencyFormatter.formatPaise(item.foodItem.pricePaise),
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                                    ),
+                                  Row(
+                                    children: [
+                                      if (portionLabel.isNotEmpty) ...[
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary.withValues(alpha: 0.12),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            portionLabel,
+                                            style: const TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                              color: AppColors.primary,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                      ],
+                                      Text(
+                                        CurrencyFormatter.formatPaise(item.unitPricePaise),
+                                        style: theme.textTheme.bodySmall?.copyWith(
+                                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
                             ),
-                            // Quantity selector
+                            const SizedBox(width: 8),
+                            // Stepper
                             Container(
                               decoration: BoxDecoration(
                                 color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04),
@@ -223,6 +303,7 @@ class CartScreen extends ConsumerWidget {
                                 border: Border.all(color: isDark ? AppColors.borderDark : AppColors.borderLight),
                               ),
                               child: Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   InkWell(
                                     onTap: () {
@@ -230,8 +311,8 @@ class CartScreen extends ConsumerWidget {
                                     },
                                     borderRadius: BorderRadius.circular(10),
                                     child: const Padding(
-                                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                      child: Icon(Icons.remove, size: 16),
+                                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                                      child: Icon(Icons.remove, size: 14),
                                     ),
                                   ),
                                   Padding(
@@ -247,26 +328,60 @@ class CartScreen extends ConsumerWidget {
                                     },
                                     borderRadius: BorderRadius.circular(10),
                                     child: const Padding(
-                                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                                      child: Icon(Icons.add, size: 16),
+                                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                                      child: Icon(Icons.add, size: 14),
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            const SizedBox(width: 16),
+                            const SizedBox(width: 8),
+                            // Line total
                             SizedBox(
-                              width: 65,
+                              width: 60,
                               child: Text(
-                                CurrencyFormatter.formatPaise(item.foodItem.pricePaise * item.quantity),
+                                CurrencyFormatter.formatPaise(item.lineTotalPaise),
                                 textAlign: TextAlign.right,
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                               ),
+                            ),
+                            const SizedBox(width: 4),
+                            // One-tap delete button
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.error),
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                              tooltip: 'Remove',
+                              onPressed: () {
+                                ref.read(cartNotifierProvider.notifier).removeFromCart(item.id);
+                              },
                             ),
                           ],
                         ),
                       );
                     },
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      if (cart.restaurant != null) {
+                        context.push('/restaurant/${cart.restaurant!.id}');
+                      } else {
+                        context.go('/');
+                      }
+                    },
+                    icon: const Icon(Icons.add_shopping_cart_rounded, size: 18),
+                    label: const Text('Add More Items', style: TextStyle(fontWeight: FontWeight.bold)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.primary,
+                      side: const BorderSide(color: AppColors.primary),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
                   ),
                 ),
 
@@ -557,7 +672,18 @@ class CartScreen extends ConsumerWidget {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 760),
               child: ElevatedButton(
-                onPressed: () => context.push('/checkout'),
+                onPressed: _isCheckingOut
+                    ? null
+                    : () async {
+                        setState(() => _isCheckingOut = true);
+                        try {
+                          await context.push('/checkout');
+                        } finally {
+                          if (mounted) {
+                            setState(() => _isCheckingOut = false);
+                          }
+                        }
+                      },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.darkAction,
                   foregroundColor: Colors.white,

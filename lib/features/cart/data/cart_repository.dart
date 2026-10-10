@@ -11,12 +11,13 @@ class CartRepository {
     return CartSummaryModel.fromJson(response.data);
   }
 
-  Future<void> addToCart(int foodItemId, {int quantity = 1, String? specialInstructions}) async {
+  Future<void> addToCart(int foodItemId, {int quantity = 1, String portion = 'FULL', String? specialInstructions}) async {
     await apiClient.dio.post(
       '/cart/items',
       data: {
         'food_item_id': foodItemId,
         'quantity': quantity,
+        'portion': portion,
         'special_instructions': specialInstructions,
       },
     );

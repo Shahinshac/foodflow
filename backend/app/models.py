@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Enum, Float, Text, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, Enum, Float, Text, UniqueConstraint, JSON
 from sqlalchemy.orm import relationship
 from .database import Base
 
@@ -107,6 +107,9 @@ class Restaurant(Base):
     opening_time = Column(String, default="09:00 AM")
     closing_time = Column(String, default="11:00 PM")
     prep_time_minutes = Column(Integer, default=25)
+    rejection_reason = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     owner = relationship("User", back_populates="restaurants")
     categories = relationship("FoodCategory", back_populates="restaurant", cascade="all, delete-orphan")
@@ -137,6 +140,7 @@ class FoodItem(Base):
     is_veg = Column(Boolean, default=True)
     image_url = Column(String, nullable=True)
     is_available = Column(Boolean, default=True)
+    portions = Column(JSON, nullable=True)
 
     restaurant = relationship("Restaurant", back_populates="foods")
     category = relationship("FoodCategory", back_populates="foods")
@@ -148,6 +152,8 @@ class CartItem(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     food_item_id = Column(Integer, ForeignKey("food_items.id"), nullable=False)
     quantity = Column(Integer, default=1, nullable=False)
+    portion = Column(String, default="FULL")
+    price_paise = Column(Integer, nullable=True)
     special_instructions = Column(String, nullable=True)
 
     user = relationship("User", back_populates="cart_items")
@@ -208,6 +214,7 @@ class OrderItem(Base):
     order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
     food_item_id = Column(Integer, ForeignKey("food_items.id"), nullable=False)
     quantity = Column(Integer, nullable=False)
+    portion = Column(String, default="FULL")
     price_paise = Column(Integer, nullable=False)
 
     order = relationship("Order", back_populates="items")

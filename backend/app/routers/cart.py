@@ -40,7 +40,15 @@ def get_cart(current_user: User = Depends(get_current_user), db: Session = Depen
         restaurant = first_item.food_item.restaurant
 
     for item in cart_items:
-        subtotal += item.food_item.price_paise * item.quantity
+        portion = item.portion or "FULL"
+        unit_price = item.price_paise
+        if unit_price is None:
+            if item.food_item.portions and isinstance(item.food_item.portions, dict) and portion in item.food_item.portions:
+                unit_price = int(item.food_item.portions[portion])
+            else:
+                unit_price = item.food_item.price_paise
+        item.price_paise = unit_price
+        subtotal += unit_price * item.quantity
 
     original_delivery_fee = restaurant.delivery_fee_paise if restaurant else 3000
     delivery_fee = 0 if is_first_order else original_delivery_fee
@@ -79,13 +87,20 @@ def add_to_cart(
             db.query(CartItem).filter(CartItem.user_id == current_user.id).delete()
             db.commit()
 
+    portion = (item_in.portion or "FULL").upper()
+    unit_price = food_item.price_paise
+    if food_item.portions and isinstance(food_item.portions, dict) and portion in food_item.portions:
+        unit_price = int(food_item.portions[portion])
+
     existing_cart_item = db.query(CartItem).filter(
         CartItem.user_id == current_user.id,
-        CartItem.food_item_id == item_in.food_item_id
+        CartItem.food_item_id == item_in.food_item_id,
+        CartItem.portion == portion
     ).first()
 
     if existing_cart_item:
         existing_cart_item.quantity += item_in.quantity
+        existing_cart_item.price_paise = unit_price
         if item_in.special_instructions:
             existing_cart_item.special_instructions = item_in.special_instructions
         db.commit()
@@ -96,6 +111,8 @@ def add_to_cart(
             user_id=current_user.id,
             food_item_id=item_in.food_item_id,
             quantity=item_in.quantity,
+            portion=portion,
+            price_paise=unit_price,
             special_instructions=item_in.special_instructions
         )
         db.add(new_cart_item)

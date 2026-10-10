@@ -34,12 +34,23 @@ class AuthNotifier extends StateNotifier<AuthState> {
     checkAuth();
   }
 
-  Future<void> checkAuth() async {
+  Future<void> checkAuth({bool isBackground = false}) async {
+    if (!isBackground && state.user == null) {
+      state = state.copyWith(isLoading: true);
+    }
     try {
       final user = await _repository.getCurrentUser();
-      state = AuthState(user: user, isLoading: false);
+      if (user != null) {
+        state = AuthState(user: user, isLoading: false);
+      } else {
+        state = AuthState(user: null, isLoading: false);
+      }
     } catch (_) {
-      state = AuthState(isLoading: false);
+      if (state.user != null) {
+        state = state.copyWith(isLoading: false);
+      } else {
+        state = AuthState(user: null, isLoading: false);
+      }
     }
   }
 

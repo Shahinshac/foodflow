@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:geolocator/geolocator.dart';
@@ -89,23 +90,47 @@ class DeliveryDashboardScreen extends ConsumerStatefulWidget {
   ConsumerState<DeliveryDashboardScreen> createState() => _DeliveryDashboardScreenState();
 }
 
-class _DeliveryDashboardScreenState extends ConsumerState<DeliveryDashboardScreen> {
+class _DeliveryDashboardScreenState extends ConsumerState<DeliveryDashboardScreen> with WidgetsBindingObserver {
   Timer? _locationSyncTimer;
+  Timer? _pollingTimer;
   int _selectedNavIndex = 0;
+  DateTime? _lastBackPressTime;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _startGpsSync();
+    _startPolling();
   }
 
   @override
-  void dispose() {
-    _locationSyncTimer?.cancel();
-    super.dispose();
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startGpsSync();
+      _startPolling();
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _stopGpsSync();
+      _stopPolling();
+    }
+  }
+
+  void _startPolling() {
+    _pollingTimer?.cancel();
+    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted) return;
+      ref.invalidate(deliveryAssignmentsProvider);
+      ref.invalidate(deliveryProfileProvider);
+    });
+  }
+
+  void _stopPolling() {
+    _pollingTimer?.cancel();
+    _pollingTimer = null;
   }
 
   void _startGpsSync() {
+    _locationSyncTimer?.cancel();
     _locationSyncTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
       final assignmentsAsync = ref.read(deliveryAssignmentsProvider);
       final profileAsync = ref.read(deliveryProfileProvider);
@@ -117,6 +142,19 @@ class _DeliveryDashboardScreenState extends ConsumerState<DeliveryDashboardScree
         }
       }
     });
+  }
+
+  void _stopGpsSync() {
+    _locationSyncTimer?.cancel();
+    _locationSyncTimer = null;
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stopGpsSync();
+    _stopPolling();
+    super.dispose();
   }
 
   Future<void> _syncDeviceLocation(int orderId) async {
@@ -201,7 +239,31 @@ class _DeliveryDashboardScreenState extends ConsumerState<DeliveryDashboardScree
     final isApproved = authUser?.isApproved ?? true;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return LayoutBuilder(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+
+        if (_selectedNavIndex != 0) {
+          setState(() => _selectedNavIndex = 0);
+          return;
+        }
+
+        final now = DateTime.now();
+        if (_lastBackPressTime == null || now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+          _lastBackPressTime = now;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Press back again to exit FoodFlow'),
+              duration: Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        } else {
+          SystemNavigator.pop();
+        }
+      },
+      child: LayoutBuilder(
       builder: (context, constraints) {
         final isDesktop = constraints.maxWidth >= 900;
 
@@ -586,6 +648,7 @@ class _DeliveryDashboardScreenState extends ConsumerState<DeliveryDashboardScree
           body: contentWidget,
         );
       },
+    ),
     );
   }
 }

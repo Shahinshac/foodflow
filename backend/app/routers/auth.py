@@ -289,3 +289,11 @@ async def login(
 @router.get("/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+@router.post("/refresh", response_model=Token)
+def refresh_token(current_user: User = Depends(get_current_user)):
+    if not current_user.is_active:
+        raise HTTPException(status_code=403, detail="Account disabled")
+    new_token = create_access_token(data={"sub": current_user.email})
+    return {"access_token": new_token, "token_type": "bearer", "user": current_user}
+

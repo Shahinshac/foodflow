@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -26,70 +28,140 @@ import '../domain/models.dart';
 
 final homeNavIndexProvider = StateProvider<int>((ref) => 0);
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObserver {
+  DateTime? _lastBackPressTime;
+  Timer? _refreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _startPolling();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startPolling();
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _stopPolling();
+    }
+  }
+
+  void _startPolling() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted) return;
+      ref.invalidate(restaurantsListProvider);
+    });
+  }
+
+  void _stopPolling() {
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stopPolling();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final navIndex = ref.watch(homeNavIndexProvider);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isDesktop = constraints.maxWidth >= 900;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
 
-        if (isDesktop) {
-          // On desktop, render dedicated full-width desktop view with top navbar
-          return const _DesktopHomeView();
+        // If not on first tab, go back to Explore tab first
+        if (navIndex != 0) {
+          ref.read(homeNavIndexProvider.notifier).state = 0;
+          return;
         }
 
-        // On mobile/tablet, render bottom-nav experience
-        return Scaffold(
-          backgroundColor: isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
-          body: IndexedStack(
-            index: navIndex,
-            children: const [
-              _MobileHomeExploreView(),
-              FavoritesScreen(),
-              OrdersListScreen(),
-              ProfileScreen(),
-            ],
-          ),
-          bottomNavigationBar: NavigationBar(
-            selectedIndex: navIndex,
-            onDestinationSelected: (idx) {
-              ref.read(homeNavIndexProvider.notifier).state = idx;
-            },
-            backgroundColor: isDark ? AppColors.surfaceDark : Colors.white,
-            surfaceTintColor: Colors.transparent,
-            elevation: 10,
-            indicatorColor: AppColors.primary.withValues(alpha: 0.15),
-            destinations: const [
-              NavigationDestination(
-                icon: Icon(Icons.explore_outlined),
-                selectedIcon: Icon(Icons.explore_rounded, color: AppColors.primary),
-                label: 'Explore',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.favorite_outline_rounded),
-                selectedIcon: Icon(Icons.favorite_rounded, color: AppColors.primary),
-                label: 'Favorites',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.receipt_long_outlined),
-                selectedIcon: Icon(Icons.receipt_long_rounded, color: AppColors.primary),
-                label: 'My Orders',
-              ),
-              NavigationDestination(
-                icon: Icon(Icons.person_outline_rounded),
-                selectedIcon: Icon(Icons.person_rounded, color: AppColors.primary),
-                label: 'Profile',
-              ),
-            ],
-          ),
-        );
+        final now = DateTime.now();
+        if (_lastBackPressTime == null || now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+          _lastBackPressTime = now;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Press back again to exit FoodFlow'),
+              duration: Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        } else {
+          SystemNavigator.pop();
+        }
       },
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isDesktop = constraints.maxWidth >= 900;
+
+          if (isDesktop) {
+            // On desktop, render dedicated full-width desktop view with top navbar
+            return const _DesktopHomeView();
+          }
+
+          // On mobile/tablet, render bottom-nav experience
+          return Scaffold(
+            backgroundColor: isDark ? AppColors.backgroundDark : AppColors.backgroundLight,
+            body: IndexedStack(
+              index: navIndex,
+              children: const [
+                _MobileHomeExploreView(),
+                FavoritesScreen(),
+                OrdersListScreen(),
+                ProfileScreen(),
+              ],
+            ),
+            bottomNavigationBar: NavigationBar(
+              selectedIndex: navIndex,
+              onDestinationSelected: (idx) {
+                ref.read(homeNavIndexProvider.notifier).state = idx;
+              },
+              backgroundColor: isDark ? AppColors.surfaceDark : Colors.white,
+              surfaceTintColor: Colors.transparent,
+              elevation: 10,
+              indicatorColor: AppColors.primary.withValues(alpha: 0.15),
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.explore_outlined),
+                  selectedIcon: Icon(Icons.explore_rounded, color: AppColors.primary),
+                  label: 'Explore',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.favorite_outline_rounded),
+                  selectedIcon: Icon(Icons.favorite_rounded, color: AppColors.primary),
+                  label: 'Favorites',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.receipt_long_outlined),
+                  selectedIcon: Icon(Icons.receipt_long_rounded, color: AppColors.primary),
+                  label: 'My Orders',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.person_outline_rounded),
+                  selectedIcon: Icon(Icons.person_rounded, color: AppColors.primary),
+                  label: 'Profile',
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }

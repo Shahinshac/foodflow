@@ -37,10 +37,10 @@ class CartNotifier extends StateNotifier<AsyncValue<void>> {
 
   CartNotifier(this._repository, this._ref) : super(const AsyncValue.data(null));
 
-  Future<void> addToCart(int foodItemId, {int quantity = 1, String? instructions}) async {
+  Future<void> addToCart(int foodItemId, {int quantity = 1, String portion = 'FULL', String? instructions}) async {
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
-      await _repository.addToCart(foodItemId, quantity: quantity, specialInstructions: instructions);
+      await _repository.addToCart(foodItemId, quantity: quantity, portion: portion, specialInstructions: instructions);
       _ref.invalidate(cartSummaryProvider);
     });
   }

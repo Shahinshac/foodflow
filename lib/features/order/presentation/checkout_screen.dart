@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:latlong2/latlong.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/services/location_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/currency_formatter.dart';
 import '../../../core/widgets/error_and_empty_views.dart';
@@ -19,7 +21,10 @@ class CheckoutScreen extends ConsumerStatefulWidget {
 }
 
 class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
-  final _addressController = TextEditingController(text: '123 Tech Park, Innovation City');
+  final _addressController = TextEditingController();
+  double? _deliveryLat;
+  double? _deliveryLng;
+  bool _isLocating = false;
   String _selectedPayment = 'COD';
   bool _isSubmitting = false;
   int? _selectedAddressId;
@@ -30,11 +35,59 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     super.dispose();
   }
 
+  Future<void> _useCurrentLocation() async {
+    setState(() => _isLocating = true);
+    final pos = await LocationService.determinePosition(
+      onError: (msg) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(msg), backgroundColor: AppColors.error),
+          );
+        }
+      },
+    );
+    if (pos != null) {
+      final addr = await LocationService.reverseGeocode(pos.latitude, pos.longitude);
+      if (mounted) {
+        setState(() {
+          _deliveryLat = pos.latitude;
+          _deliveryLng = pos.longitude;
+          _selectedAddressId = null;
+          _addressController.text = addr;
+          _isLocating = false;
+        });
+      }
+    } else {
+      if (mounted) {
+        setState(() => _isLocating = false);
+      }
+    }
+  }
+
+  Future<void> _pickOnMap() async {
+    final result = await LocationService.showMapPicker(
+      context,
+      initialCenter: _deliveryLat != null && _deliveryLng != null
+          ? LatLng(_deliveryLat!, _deliveryLng!)
+          : null,
+      initialAddress: _addressController.text.trim(),
+    );
+    if (result != null && mounted) {
+      setState(() {
+        _deliveryLat = result.coordinates.latitude;
+        _deliveryLng = result.coordinates.longitude;
+        _selectedAddressId = null;
+        _addressController.text = result.address;
+      });
+    }
+  }
+
   void _placeOrder() async {
+    if (_isSubmitting) return; // Prevent duplicate order creation on multiple taps
     if (_addressController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Please enter or select a delivery address'),
+        const SnackBar(
+          content: Text('Please enter or select a delivery address'),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
         ),
@@ -52,6 +105,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         deliveryAddress: _addressController.text.trim(),
         paymentMethod: _selectedPayment,
         couponCode: appliedCoupon?.code,
+        deliveryLat: _deliveryLat,
+        deliveryLng: _deliveryLng,
       );
 
       // Reset cart and coupon states
@@ -210,6 +265,45 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                       ),
                     ),
                   ),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _isLocating ? null : _useCurrentLocation,
+                          icon: _isLocating
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                                )
+                              : const Icon(Icons.my_location_rounded, size: 16),
+                          label: Text(_isLocating ? 'Locating...' : 'Use GPS', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.primary,
+                            side: const BorderSide(color: AppColors.primary),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _pickOnMap,
+                          icon: const Icon(Icons.map_rounded, size: 16),
+                          label: const Text('Pick on Map', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.secondary,
+                            side: const BorderSide(color: AppColors.secondary),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
 
                   TextFormField(
                     controller: _addressController,

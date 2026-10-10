@@ -217,16 +217,54 @@ class AuthRepository {
     }
   }
 
+  Future<UserModel?>? _inFlightCurrentUserFuture;
+
   Future<UserModel?> getCurrentUser() async {
+    if (_inFlightCurrentUserFuture != null) {
+      return _inFlightCurrentUserFuture;
+    }
+    _inFlightCurrentUserFuture = _performGetCurrentUser();
+    try {
+      return await _inFlightCurrentUserFuture;
+    } finally {
+      _inFlightCurrentUserFuture = null;
+    }
+  }
+
+  Future<UserModel?> _performGetCurrentUser() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString(AppConstants.authTokenKey);
     if (token == null || token.isEmpty) return null;
 
+    UserModel? cachedUser;
+    final cachedJson = prefs.getString(AppConstants.userKey);
+    if (cachedJson != null && cachedJson.isNotEmpty) {
+      try {
+        cachedUser = UserModel.fromJson(jsonDecode(cachedJson));
+      } catch (_) {}
+    }
+
     try {
       final response = await apiClient.dio.get('/auth/me');
-      return UserModel.fromJson(response.data);
+      final user = UserModel.fromJson(response.data);
+      await prefs.setString(AppConstants.userKey, jsonEncode(user.toJson()));
+      return user;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) {
+        // True unrecoverable auth failure (token expired/revoked)
+        await logout();
+        return null;
+      }
+      // Transient error (network timeout, offline, 502/503 cold start):
+      // Return cached user to preserve session and avoid spurious Login redirects
+      if (cachedUser != null) {
+        return cachedUser;
+      }
+      return null;
     } catch (_) {
-      await logout();
+      if (cachedUser != null) {
+        return cachedUser;
+      }
       return null;
     }
   }

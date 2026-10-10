@@ -596,17 +596,11 @@ class _DesktopDishCard extends ConsumerWidget {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               elevation: 0,
             ),
-            onPressed: () {
-              ref.read(cartNotifierProvider.notifier).addToCart(food.id);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Added "${food.name}" to cart'),
-                  duration: const Duration(seconds: 1),
-                  backgroundColor: AppColors.darkAction,
-                ),
-              );
-            },
-            child: const Text('Add +', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+            onPressed: () => _handleAddToCart(context, ref, food),
+            child: Text(
+              food.portions != null && food.portions!.isNotEmpty ? 'Options +' : 'Add +',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+            ),
           ),
         ],
       ),
@@ -675,6 +669,13 @@ class _MobileDishCard extends ConsumerWidget {
                   CurrencyFormatter.formatPaise(food.pricePaise),
                   style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
                 ),
+                if (food.portions != null && food.portions!.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  const Text(
+                    'Portion sizes available',
+                    style: TextStyle(fontSize: 10, color: AppColors.primary, fontWeight: FontWeight.bold),
+                  ),
+                ],
               ],
             ),
           ),
@@ -687,19 +688,145 @@ class _MobileDishCard extends ConsumerWidget {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               elevation: 0,
             ),
-            onPressed: () {
-              ref.read(cartNotifierProvider.notifier).addToCart(food.id);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Added "${food.name}" to cart'),
-                  duration: const Duration(seconds: 1),
-                  backgroundColor: AppColors.darkAction,
-                ),
-              );
-            },
-            child: const Text('Add +', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+            onPressed: () => _handleAddToCart(context, ref, food),
+            child: Text(
+              food.portions != null && food.portions!.isNotEmpty ? 'Options +' : 'Add +',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+            ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+void _handleAddToCart(BuildContext context, WidgetRef ref, FoodItemModel food) {
+  final portions = food.portions;
+  if (portions != null && portions.isNotEmpty) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return Container(
+          decoration: BoxDecoration(
+            color: isDark ? AppColors.surfaceDark : Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: food.isVeg ? AppColors.veg : AppColors.nonVeg,
+                        width: 1.5,
+                      ),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Icon(
+                      Icons.circle,
+                      size: 6,
+                      color: food.isVeg ? AppColors.veg : AppColors.nonVeg,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      food.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Select portion size:',
+                style: TextStyle(fontSize: 13, color: Colors.grey, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 16),
+              ...['QUARTER', 'HALF', 'THREE_QUARTER', 'FULL'].where((p) => portions.containsKey(p)).map((portionKey) {
+                final price = portions[portionKey]!;
+                String displayTitle;
+                switch (portionKey) {
+                  case 'QUARTER':
+                    displayTitle = 'Quarter Portion';
+                    break;
+                  case 'HALF':
+                    displayTitle = 'Half Portion';
+                    break;
+                  case 'THREE_QUARTER':
+                    displayTitle = '3/4 Portion';
+                    break;
+                  case 'FULL':
+                  default:
+                    displayTitle = 'Full Portion';
+                    break;
+                }
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: isDark ? AppColors.borderDark : AppColors.borderLight),
+                  ),
+                  child: ListTile(
+                    title: Text(displayTitle, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          CurrencyFormatter.formatPaise(price),
+                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: AppColors.primary),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(Icons.add_circle_outline_rounded, color: AppColors.primary, size: 20),
+                      ],
+                    ),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      ref.read(cartNotifierProvider.notifier).addToCart(food.id, portion: portionKey);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Added $displayTitle of "${food.name}" to cart'),
+                          duration: const Duration(seconds: 1),
+                          backgroundColor: AppColors.darkAction,
+                        ),
+                      );
+                    },
+                  ),
+                );
+              }),
+            ],
+          ),
+        );
+      },
+    );
+  } else {
+    ref.read(cartNotifierProvider.notifier).addToCart(food.id, portion: 'FULL');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Added "${food.name}" to cart'),
+        duration: const Duration(seconds: 1),
+        backgroundColor: AppColors.darkAction,
       ),
     );
   }

@@ -10,6 +10,8 @@ class OrderRepository {
     required String deliveryAddress,
     required String paymentMethod,
     String? couponCode,
+    double? deliveryLat,
+    double? deliveryLng,
   }) async {
     final response = await apiClient.dio.post(
       '/orders',
@@ -17,6 +19,8 @@ class OrderRepository {
         'delivery_address': deliveryAddress,
         'payment_method': paymentMethod,
         if (couponCode != null && couponCode.isNotEmpty) 'coupon_code': couponCode,
+        if (deliveryLat != null) 'delivery_lat': deliveryLat,
+        if (deliveryLng != null) 'delivery_lng': deliveryLng,
       },
     );
     return OrderModel.fromJson(response.data);

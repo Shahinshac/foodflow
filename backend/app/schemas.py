@@ -55,6 +55,7 @@ class FoodItemBase(BaseModel):
     is_veg: bool = True
     image_url: Optional[str] = None
     is_available: bool = True
+    portions: Optional[dict] = None
 
 class FoodItemCreate(FoodItemBase):
     category_id: Optional[int] = None
@@ -133,6 +134,9 @@ class RestaurantResponse(RestaurantBase):
     is_approved: bool
     is_favorite: Optional[bool] = False
     active_offers_count: Optional[int] = 0
+    rejection_reason: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     model_config = ConfigDict(from_attributes=True)
 
 class RestaurantDetailResponse(RestaurantResponse):
@@ -148,6 +152,7 @@ class RestaurantSettingsUpdate(BaseModel):
     estimated_delivery_time: Optional[str] = None
     delivery_fee_paise: Optional[int] = None
     min_order_paise: Optional[int] = None
+    image_url: Optional[str] = None
 
 # Coupon & Promotion Schemas
 class CouponBase(BaseModel):
@@ -200,6 +205,7 @@ class CouponAnalyticsResponse(BaseModel):
 class CartItemAdd(BaseModel):
     food_item_id: int
     quantity: int = 1
+    portion: Optional[str] = "FULL"
     special_instructions: Optional[str] = None
 
 class CartItemUpdate(BaseModel):
@@ -209,6 +215,8 @@ class CartItemResponse(BaseModel):
     id: int
     food_item: FoodItemResponse
     quantity: int
+    portion: Optional[str] = "FULL"
+    price_paise: Optional[int] = None
     special_instructions: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
@@ -236,6 +244,7 @@ class OrderItemResponse(BaseModel):
     id: int
     food_item: FoodItemResponse
     quantity: int
+    portion: Optional[str] = "FULL"
     price_paise: int
     model_config = ConfigDict(from_attributes=True)
 

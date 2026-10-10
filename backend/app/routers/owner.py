@@ -141,6 +141,8 @@ def update_restaurant_settings(
         restaurant.delivery_fee_paise = settings.delivery_fee_paise
     if settings.min_order_paise is not None:
         restaurant.min_order_paise = settings.min_order_paise
+    if settings.image_url is not None:
+        restaurant.image_url = settings.image_url
 
     db.commit()
     db.refresh(restaurant)
@@ -180,9 +182,44 @@ def create_food_item(
         price_paise=food_in.price_paise,
         is_veg=food_in.is_veg,
         image_url=food_in.image_url,
-        is_available=food_in.is_available
+        is_available=food_in.is_available,
+        portions=food_in.portions
     )
     db.add(food)
+    db.commit()
+    db.refresh(food)
+    return food
+
+@router.put("/foods/{food_id}", response_model=FoodItemResponse)
+def update_food_item(
+    food_id: int,
+    food_in: FoodItemCreate,
+    current_user: User = Depends(require_restaurant_owner),
+    db: Session = Depends(get_db)
+):
+    restaurant = db.query(Restaurant).filter(Restaurant.owner_id == current_user.id).first()
+    if not restaurant:
+        raise HTTPException(status_code=404, detail="Restaurant not found")
+
+    food = db.query(FoodItem).filter(
+        FoodItem.id == food_id,
+        FoodItem.restaurant_id == restaurant.id
+    ).first()
+    if not food:
+        raise HTTPException(status_code=404, detail="Food item not found or unauthorized")
+
+    food.name = food_in.name
+    food.description = food_in.description
+    food.price_paise = food_in.price_paise
+    food.is_veg = food_in.is_veg
+    if food_in.image_url:
+        food.image_url = food_in.image_url
+    food.is_available = food_in.is_available
+    if food_in.portions is not None:
+        food.portions = food_in.portions
+    if food_in.category_id:
+        food.category_id = food_in.category_id
+
     db.commit()
     db.refresh(food)
     return food
@@ -250,10 +287,13 @@ def update_owner_order_status(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found or unauthorized")
 
+    if status_in.status == order.status:
+        return order
+
     valid_transitions = {
         OrderStatus.PLACED: [OrderStatus.RESTAURANT_CONFIRMED, OrderStatus.REJECTED, OrderStatus.CANCELLED],
-        OrderStatus.RESTAURANT_CONFIRMED: [OrderStatus.PREPARING, OrderStatus.CANCELLED],
-        OrderStatus.PREPARING: [OrderStatus.READY_FOR_PICKUP],
+        OrderStatus.RESTAURANT_CONFIRMED: [OrderStatus.PREPARING, OrderStatus.REJECTED, OrderStatus.CANCELLED],
+        OrderStatus.PREPARING: [OrderStatus.READY_FOR_PICKUP, OrderStatus.CANCELLED],
         OrderStatus.READY_FOR_PICKUP: [OrderStatus.DELIVERY_PARTNER_ASSIGNED, OrderStatus.PICKED_UP, OrderStatus.OUT_FOR_DELIVERY],
     }
 

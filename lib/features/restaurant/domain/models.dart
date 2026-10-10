@@ -58,6 +58,9 @@ class RestaurantModel {
   final String? addressText;
   final bool isFavorite;
   final int activeOffersCount;
+  final String? rejectionReason;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
 
   RestaurantModel({
     required this.id,
@@ -77,6 +80,9 @@ class RestaurantModel {
     this.addressText,
     this.isFavorite = false,
     this.activeOffersCount = 0,
+    this.rejectionReason,
+    this.createdAt,
+    this.updatedAt,
   });
 
   factory RestaurantModel.fromJson(Map<String, dynamic> json) {
@@ -98,6 +104,9 @@ class RestaurantModel {
       addressText: json['address_text'],
       isFavorite: json['is_favorite'] ?? false,
       activeOffersCount: json['active_offers_count'] ?? 0,
+      rejectionReason: json['rejection_reason'],
+      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at']) : null,
+      updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at']) : null,
     );
   }
 
@@ -107,6 +116,7 @@ class RestaurantModel {
     bool? isActive,
     bool? isApproved,
     int? activeOffersCount,
+    String? rejectionReason,
   }) {
     return RestaurantModel(
       id: id,
@@ -126,6 +136,9 @@ class RestaurantModel {
       addressText: addressText,
       isFavorite: isFavorite ?? this.isFavorite,
       activeOffersCount: activeOffersCount ?? this.activeOffersCount,
+      rejectionReason: rejectionReason ?? this.rejectionReason,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
     );
   }
 }
@@ -141,6 +154,7 @@ class FoodItemModel {
   final bool isVeg;
   final String? imageUrl;
   final bool isAvailable;
+  final Map<String, int>? portions;
 
   FoodItemModel({
     required this.id,
@@ -153,9 +167,23 @@ class FoodItemModel {
     required this.isVeg,
     this.imageUrl,
     required this.isAvailable,
+    this.portions,
   });
 
+  int getPriceForPortion(String? portion) {
+    if (portions != null && portion != null && portions!.containsKey(portion)) {
+      return portions![portion]!;
+    }
+    return pricePaise;
+  }
+
   factory FoodItemModel.fromJson(Map<String, dynamic> json) {
+    Map<String, int>? portionsMap;
+    if (json['portions'] is Map) {
+      portionsMap = (json['portions'] as Map).map(
+        (key, value) => MapEntry(key.toString(), (value as num).toInt()),
+      );
+    }
     return FoodItemModel(
       id: json['id'],
       restaurantId: json['restaurant_id'],
@@ -167,6 +195,7 @@ class FoodItemModel {
       isVeg: json['is_veg'] ?? true,
       imageUrl: json['image_url'],
       isAvailable: json['is_available'] ?? true,
+      portions: portionsMap,
     );
   }
 }
@@ -175,20 +204,29 @@ class CartItemModel {
   final int id;
   final FoodItemModel foodItem;
   final int quantity;
+  final String portion;
+  final int? pricePaise;
   final String? specialInstructions;
 
   CartItemModel({
     required this.id,
     required this.foodItem,
     required this.quantity,
+    this.portion = 'FULL',
+    this.pricePaise,
     this.specialInstructions,
   });
+
+  int get unitPricePaise => pricePaise ?? foodItem.getPriceForPortion(portion);
+  int get lineTotalPaise => unitPricePaise * quantity;
 
   factory CartItemModel.fromJson(Map<String, dynamic> json) {
     return CartItemModel(
       id: json['id'],
       foodItem: FoodItemModel.fromJson(json['food_item']),
       quantity: json['quantity'],
+      portion: json['portion'] ?? 'FULL',
+      pricePaise: json['price_paise'],
       specialInstructions: json['special_instructions'],
     );
   }

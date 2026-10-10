@@ -45,11 +45,19 @@ def create_order(
                 status_code=400,
                 detail=f"Item '{c_item.food_item.name}' is currently unavailable. Please remove it from cart."
             )
-        item_price = c_item.food_item.price_paise
+        portion = c_item.portion or "FULL"
+        item_price = c_item.price_paise
+        if item_price is None:
+            if c_item.food_item.portions and isinstance(c_item.food_item.portions, dict) and portion in c_item.food_item.portions:
+                item_price = int(c_item.food_item.portions[portion])
+            else:
+                item_price = c_item.food_item.price_paise
+
         subtotal += item_price * c_item.quantity
         order_items_to_create.append({
             "food_item_id": c_item.food_item_id,
             "quantity": c_item.quantity,
+            "portion": portion,
             "price_paise": item_price
         })
 
@@ -84,11 +92,11 @@ def create_order(
     total = subtotal + delivery_fee + tax - discount
     total = max(0, total)  # Guarantee non-negative total
 
-    # Create Order record
+    # Create Order record with Automatic Acceptance
     new_order = Order(
         user_id=current_user.id,
         restaurant_id=restaurant.id,
-        status=OrderStatus.PLACED,
+        status=OrderStatus.RESTAURANT_CONFIRMED,
         subtotal_paise=subtotal,
         delivery_fee_paise=delivery_fee,
         tax_paise=tax,
@@ -114,11 +122,11 @@ def create_order(
     # Initial status history record
     history = OrderStatusHistory(
         order_id=new_order.id,
-        status=OrderStatus.PLACED,
-        previous_status=None,
+        status=OrderStatus.RESTAURANT_CONFIRMED,
+        previous_status=OrderStatus.PLACED,
         changed_by_user_id=current_user.id,
-        actor_role=current_user.role.value,
-        reason="Order placed successfully by customer"
+        actor_role="SYSTEM",
+        reason="Order placed and automatically accepted"
     )
     db.add(history)
 
@@ -140,6 +148,7 @@ def create_order(
             order_id=new_order.id,
             food_item_id=item_data["food_item_id"],
             quantity=item_data["quantity"],
+            portion=item_data.get("portion", "FULL"),
             price_paise=item_data["price_paise"]
         )
         db.add(oi)
