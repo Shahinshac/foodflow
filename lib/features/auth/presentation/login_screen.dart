@@ -241,7 +241,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   } catch (e) {
                                     setModalState(() => isUploading = false);
                                     if (modalCtx.mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      ScaffoldMessenger.of(modalCtx).showSnackBar(
                                         SnackBar(content: Text('Upload failed: $e'), backgroundColor: AppColors.error),
                                       );
                                     }
@@ -285,11 +285,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                                   if (success && modalCtx.mounted) {
                                     Navigator.pop(ctx);
-                                    context.go('/owner-dashboard');
+                                    if (mounted) {
+                                      context.go('/owner-dashboard');
+                                    }
                                   }
                                 } catch (e) {
                                   if (modalCtx.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
+                                    ScaffoldMessenger.of(modalCtx).showSnackBar(
                                       SnackBar(content: Text('Registration failed: $e'), backgroundColor: AppColors.error),
                                     );
                                   }
@@ -766,6 +768,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       fontWeight: FontWeight.w800,
                       fontSize: 13,
                     ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+
+          if (isRider) ...[
+            const SizedBox(height: 24),
+            Center(
+              child: InkWell(
+                onTap: () => context.go('/rider/register'),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(Icons.two_wheeler_rounded, color: Color(0xFF10B981), size: 18),
+                      SizedBox(width: 8),
+                      Text(
+                        '🛵 Register as Delivery Rider',
+                        style: TextStyle(
+                          color: Color(0xFF059669),
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

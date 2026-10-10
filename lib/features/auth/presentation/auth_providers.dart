@@ -115,6 +115,32 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  Future<bool> registerRider({
+    required String email,
+    required String password,
+    required String fullName,
+    String? phone,
+    String vehicleType = 'SCOOTER',
+    String? vehicleNumber,
+  }) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final user = await _repository.registerRider(
+        email: email,
+        password: password,
+        fullName: fullName,
+        phone: phone,
+        vehicleType: vehicleType,
+        vehicleNumber: vehicleNumber,
+      );
+      state = AuthState(user: user, isLoading: false);
+      return true;
+    } catch (e) {
+      state = state.copyWith(isLoading: false, error: e.toString().replaceAll('Exception: ', ''));
+      return false;
+    }
+  }
+
   Future<void> logout() async {
     await _repository.logout();
     state = AuthState(user: null, isLoading: false);

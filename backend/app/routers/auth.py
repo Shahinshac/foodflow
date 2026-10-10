@@ -4,8 +4,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from ..database import get_db
-from ..models import User, UserRole, Restaurant
-from ..schemas import UserCreate, UserResponse, Token, OwnerRegistrationRequest
+from ..models import User, UserRole, Restaurant, DeliveryPartner
+from ..schemas import UserCreate, UserResponse, Token, OwnerRegistrationRequest, RiderRegistrationRequest
 from ..auth import get_password_hash, verify_password, create_access_token, get_current_user
 from .notifications import create_system_notification
 
@@ -106,6 +106,73 @@ def register_owner_with_restaurant(
 
     access_token = create_access_token(data={"sub": owner_user.email})
     return {"access_token": access_token, "token_type": "bearer", "user": owner_user}
+
+@router.post("/register-rider", response_model=Token)
+def register_rider(
+    rider_in: RiderRegistrationRequest,
+    db: Session = Depends(get_db)
+):
+    clean_email = rider_in.email.strip().lower()
+    existing_user = db.query(User).filter(User.email == clean_email).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    if len(rider_in.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    clean_vehicle = rider_in.vehicle_number.strip().upper()
+    if not clean_vehicle:
+        raise HTTPException(status_code=400, detail="Vehicle number is required")
+
+    hashed_pwd = get_password_hash(rider_in.password)
+    # Create rider account with server-assigned DELIVERY_PARTNER role and pending approval
+    rider_user = User(
+        email=clean_email,
+        hashed_password=hashed_pwd,
+        full_name=rider_in.full_name.strip(),
+        phone=rider_in.phone.strip() if rider_in.phone else None,
+        role=UserRole.DELIVERY_PARTNER,
+        is_active=True,
+        is_approved=False
+    )
+    db.add(rider_user)
+    db.commit()
+    db.refresh(rider_user)
+
+    # Create DeliveryPartner profile linked to user
+    dp = DeliveryPartner(
+        user_id=rider_user.id,
+        vehicle_type=rider_in.vehicle_type or "SCOOTER",
+        vehicle_number=clean_vehicle,
+        is_online=False,
+        is_verified=False
+    )
+    db.add(dp)
+    db.commit()
+    db.refresh(dp)
+
+    # Notify super admins of new rider application
+    admin_users = db.query(User).filter(User.role == UserRole.ADMIN).all()
+    for admin in admin_users:
+        create_system_notification(
+            db=db,
+            user_id=admin.id,
+            title="New Delivery Rider Application 🛵",
+            message=f"'{rider_user.full_name}' ({clean_email}) has registered with vehicle {clean_vehicle} and is awaiting your review.",
+            notif_type="SYSTEM"
+        )
+
+    # Confirmation notification to rider
+    create_system_notification(
+        db=db,
+        user_id=rider_user.id,
+        title="Rider Application Received ⏳",
+        message="Thank you for applying to join FoodFlow delivery fleet. Your profile is currently under review by Super Admin.",
+        notif_type="SYSTEM"
+    )
+
+    access_token = create_access_token(data={"sub": rider_user.email})
+    return {"access_token": access_token, "token_type": "bearer", "user": rider_user}
 
 @router.post("/login", response_model=Token)
 async def login(

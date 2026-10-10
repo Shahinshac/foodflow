@@ -915,3 +915,126 @@ def test_admin_user_deletion_safeguards_and_soft_delete():
 
     db.close()
 
+
+def test_rider_self_registration_flow_and_security():
+    db = TestingSessionLocal()
+    # 1. Register a new delivery rider
+    rider_data = {
+        "email": "new_fleet_rider@test.com",
+        "password": "secure_password_123",
+        "full_name": "Rider Flash",
+        "phone": "9876500001",
+        "vehicle_type": "SCOOTER",
+        "vehicle_number": "KA-01-AB-9999"
+    }
+    reg_resp = client.post("/auth/register-rider", json=rider_data)
+    assert reg_resp.status_code == 200
+    reg_json = reg_resp.json()
+    assert "access_token" in reg_json
+    assert reg_json["user"]["email"] == "new_fleet_rider@test.com"
+    assert reg_json["user"]["role"] == "DELIVERY_PARTNER"
+    assert reg_json["user"]["is_approved"] is False # Pending admin approval
+
+    rider_id = reg_json["user"]["id"]
+
+    # Verify database model details
+    rider_user = db.query(User).filter(User.id == rider_id).first()
+    assert rider_user is not None
+    assert rider_user.role == UserRole.DELIVERY_PARTNER
+    assert rider_user.is_approved is False
+    assert rider_user.hashed_password != "secure_password_123"
+    
+    partner_profile = db.query(DeliveryPartner).filter(DeliveryPartner.user_id == rider_id).first()
+    assert partner_profile is not None
+    assert partner_profile.vehicle_type == "SCOOTER"
+    assert partner_profile.vehicle_number == "KA-01-AB-9999"
+    assert partner_profile.is_verified is False
+    assert partner_profile.is_online is False
+
+    # 2. Duplicate email rejection
+    dup_resp = client.post("/auth/register-rider", json=rider_data)
+    assert dup_resp.status_code == 400
+    assert "already registered" in dup_resp.json()["detail"].lower()
+
+    # 3. Short password validation
+    short_pass_data = dict(rider_data)
+    short_pass_data["email"] = "short_pass_rider@test.com"
+    short_pass_data["password"] = "123"
+    short_resp = client.post("/auth/register-rider", json=short_pass_data)
+    assert short_resp.status_code == 400
+    assert "6 characters" in short_resp.json()["detail"].lower()
+
+    # 4. Unapproved rider cannot toggle online or receive orders
+    rider_token = reg_json["access_token"]
+    rider_headers = {"Authorization": f"Bearer {rider_token}"}
+
+    toggle_resp = client.put("/delivery/toggle-online", headers=rider_headers)
+    assert toggle_resp.status_code == 403
+    assert "pending administrator approval" in toggle_resp.json()["detail"].lower()
+
+    orders_resp = client.get("/delivery/available-orders", headers=rider_headers)
+    assert orders_resp.status_code == 200
+    assert orders_resp.json() == []
+
+    # 5. Create an Admin user for approval workflow
+    admin = User(
+        email="super_fleet_admin@test.com",
+        hashed_password=get_password_hash("adminpass123"),
+        full_name="Fleet Admin",
+        role=UserRole.ADMIN,
+        is_active=True,
+        is_approved=True
+    )
+    db.add(admin)
+    db.commit()
+    db.refresh(admin)
+
+    admin_token = create_access_token(data={"sub": admin.email, "role": "ADMIN"})
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    # Non-admin cannot approve rider
+    cust = User(
+        email="any_customer@test.com",
+        hashed_password=get_password_hash("custpass123"),
+        full_name="Any Customer",
+        role=UserRole.CUSTOMER,
+        is_active=True,
+        is_approved=True
+    )
+    db.add(cust)
+    db.commit()
+    cust_token = create_access_token(data={"sub": cust.email, "role": "CUSTOMER"})
+    unauth_approve = client.put(f"/admin/users/{rider_id}/approve", headers={"Authorization": f"Bearer {cust_token}"})
+    assert unauth_approve.status_code == 403
+
+    # Admin approves rider
+    approve_resp = client.put(f"/admin/users/{rider_id}/approve", headers=admin_headers)
+    assert approve_resp.status_code == 200
+    assert approve_resp.json()["is_approved"] is True
+
+    # Check DB state
+    db.expire_all()
+    updated_rider = db.query(User).filter(User.id == rider_id).first()
+    assert updated_rider.is_approved is True
+    updated_partner = db.query(DeliveryPartner).filter(DeliveryPartner.user_id == rider_id).first()
+    assert updated_partner.is_verified is True
+
+    # 6. Approved rider can now go online
+    approved_toggle = client.put("/delivery/toggle-online", headers=rider_headers)
+    assert approved_toggle.status_code == 200
+    assert approved_toggle.json()["is_online"] is True
+
+    # 7. Admin rejects/deactivates rider
+    reject_resp = client.put(f"/admin/users/{rider_id}/reject", headers=admin_headers)
+    assert reject_resp.status_code == 200
+    assert reject_resp.json()["is_approved"] is False
+    assert reject_resp.json()["is_active"] is False
+
+    db.expire_all()
+    rejected_partner = db.query(DeliveryPartner).filter(DeliveryPartner.user_id == rider_id).first()
+    assert rejected_partner.is_verified is False
+    assert rejected_partner.is_online is False
+
+    db.close()
+
+

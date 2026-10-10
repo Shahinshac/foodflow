@@ -197,6 +197,8 @@ class _DeliveryDashboardScreenState extends ConsumerState<DeliveryDashboardScree
   Widget build(BuildContext context) {
     final profileAsync = ref.watch(deliveryProfileProvider);
     final assignmentsAsync = ref.watch(deliveryAssignmentsProvider);
+    final authUser = ref.watch(authProvider).user;
+    final isApproved = authUser?.isApproved ?? true;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return LayoutBuilder(
@@ -218,6 +220,44 @@ class _DeliveryDashboardScreenState extends ConsumerState<DeliveryDashboardScree
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (!isApproved) ...[
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF3C7),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFFDE68A)),
+                        ),
+                        child: Row(
+                          children: const [
+                            Icon(Icons.pending_actions_rounded, color: Color(0xFFB45309), size: 24),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Account Pending Verification',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14,
+                                      color: Color(0xFF92400E),
+                                    ),
+                                  ),
+                                  SizedBox(height: 2),
+                                  Text(
+                                    'Your rider application has been submitted and is currently under review by our Admin team. You will be able to go online and receive orders once approved.',
+                                    style: TextStyle(fontSize: 12, color: Color(0xFFB45309)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
                     // Rider Status & Earnings Card
                     profileAsync.when(
                       data: (profile) => Container(
@@ -253,9 +293,13 @@ class _DeliveryDashboardScreenState extends ConsumerState<DeliveryDashboardScree
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          profile.isOnline ? 'YOU ARE ONLINE' : 'YOU ARE OFFLINE',
+                                          !isApproved
+                                              ? 'PENDING APPROVAL'
+                                              : (profile.isOnline ? 'YOU ARE ONLINE' : 'YOU ARE OFFLINE'),
                                           style: TextStyle(
-                                            color: profile.isOnline ? Colors.green.shade600 : (isDark ? Colors.grey.shade400 : Colors.grey.shade700),
+                                            color: !isApproved
+                                                ? const Color(0xFFB45309)
+                                                : (profile.isOnline ? Colors.green.shade600 : (isDark ? Colors.grey.shade400 : Colors.grey.shade700)),
                                             fontWeight: FontWeight.w900,
                                             fontSize: 14,
                                             letterSpacing: 0.5,
@@ -272,7 +316,7 @@ class _DeliveryDashboardScreenState extends ConsumerState<DeliveryDashboardScree
                                 Switch(
                                   value: profile.isOnline,
                                   activeThumbColor: AppColors.veg,
-                                  onChanged: (_) => _toggleOnline(),
+                                  onChanged: isApproved ? (_) => _toggleOnline() : null,
                                 ),
                               ],
                             ),

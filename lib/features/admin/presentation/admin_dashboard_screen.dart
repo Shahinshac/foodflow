@@ -213,6 +213,105 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
     }
   }
 
+  void _approveUser(int userId) async {
+    setState(() => _processingUserIds.add(userId));
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      await apiClient.dio.put('/admin/users/$userId/approve');
+      ref.invalidate(adminUsersProvider);
+      ref.invalidate(adminAnalyticsProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('User account approved successfully!'), backgroundColor: AppColors.veg),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to approve user: ${ApiClient.formatError(e)}'), backgroundColor: AppColors.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _processingUserIds.remove(userId));
+    }
+  }
+
+  void _confirmRejectUser(UserModel u) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? AppColors.surfaceDark : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: const [
+            Icon(Icons.person_off_outlined, color: AppColors.error, size: 26),
+            SizedBox(width: 10),
+            Text('Reject Registration', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Are you sure you want to reject the application for ${u.fullName} (${u.role})?',
+              style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : const Color(0xFF374151)),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'The account will remain inactive and prevented from signing in or taking deliveries.',
+              style: TextStyle(fontSize: 12, color: isDark ? Colors.white54 : const Color(0xFF6B7280)),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _rejectUser(u.id);
+            },
+            child: const Text('Reject Application', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _rejectUser(int userId) async {
+    setState(() => _processingUserIds.add(userId));
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      await apiClient.dio.put('/admin/users/$userId/reject');
+      ref.invalidate(adminUsersProvider);
+      ref.invalidate(adminAnalyticsProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('User application rejected.'), backgroundColor: AppColors.error),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to reject user: ${ApiClient.formatError(e)}'), backgroundColor: AppColors.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _processingUserIds.remove(userId));
+    }
+  }
+
   void _approveRestaurant(int restaurantId) async {
     setState(() => _processingRestaurantIds.add(restaurantId));
     try {
@@ -1712,6 +1811,23 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
                                           runSpacing: 4,
                                           children: [
                                             _buildRoleBadge(u.role, isDark),
+                                            if (!u.isApproved)
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFFFEF3C7),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                  border: Border.all(color: const Color(0xFFFDE68A)),
+                                                ),
+                                                child: const Text(
+                                                  '⏳ PENDING APPROVAL',
+                                                  style: TextStyle(
+                                                    color: Color(0xFFB45309),
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w800,
+                                                  ),
+                                                ),
+                                              ),
                                             Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                               decoration: BoxDecoration(
@@ -1750,6 +1866,31 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
                                       width: 24,
                                       height: 24,
                                       child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                                    )
+                                  else if (!u.isApproved)
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.close_rounded, color: AppColors.error, size: 22),
+                                          tooltip: 'Reject Application',
+                                          onPressed: () => _confirmRejectUser(u),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.check_circle_rounded, color: AppColors.veg, size: 22),
+                                          tooltip: 'Approve Application',
+                                          onPressed: () => _approveUser(u.id),
+                                        ),
+                                        IconButton(
+                                          icon: Icon(
+                                            Icons.delete_outline_rounded,
+                                            color: isCurrentAdmin ? Colors.grey.shade400 : AppColors.error,
+                                            size: 22,
+                                          ),
+                                          tooltip: isCurrentAdmin ? 'Cannot delete your own account' : 'Delete Account',
+                                          onPressed: isCurrentAdmin ? null : () => _confirmDeleteUser(u),
+                                        ),
+                                      ],
                                     )
                                   else
                                     Row(

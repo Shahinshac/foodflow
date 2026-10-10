@@ -22,7 +22,12 @@ def get_delivery_profile(
 ):
     dp = db.query(DeliveryPartner).filter(DeliveryPartner.user_id == current_user.id).first()
     if not dp:
-        dp = DeliveryPartner(user_id=current_user.id, vehicle_number="REG-1001", is_online=True, is_verified=True)
+        dp = DeliveryPartner(
+            user_id=current_user.id,
+            vehicle_number="REG-1001",
+            is_online=False,
+            is_verified=current_user.is_approved
+        )
         db.add(dp)
         db.commit()
         db.refresh(dp)
@@ -33,6 +38,12 @@ def toggle_online_status(
     current_user: User = Depends(require_delivery_partner),
     db: Session = Depends(get_db)
 ):
+    if not current_user.is_approved:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your delivery rider account is pending administrator approval"
+        )
+
     dp = db.query(DeliveryPartner).filter(DeliveryPartner.user_id == current_user.id).first()
     if not dp:
         raise HTTPException(status_code=404, detail="Delivery profile not found")
@@ -58,6 +69,9 @@ def get_available_orders_for_delivery(
     current_user: User = Depends(require_delivery_partner),
     db: Session = Depends(get_db)
 ):
+    if not current_user.is_approved:
+        return []
+
     dp = db.query(DeliveryPartner).filter(DeliveryPartner.user_id == current_user.id).first()
     if not dp or not dp.is_online:
         return []

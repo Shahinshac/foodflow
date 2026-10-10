@@ -156,6 +156,69 @@ def toggle_user_active(
     db.refresh(target_user)
     return target_user
 
+@router.put("/users/{user_id}/approve", response_model=UserResponse)
+def approve_user_by_admin(
+    user_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target_user.is_approved = True
+    target_user.is_active = True
+
+    if target_user.delivery_profile:
+        target_user.delivery_profile.is_verified = True
+
+    log = AuditLog(
+        admin_id=current_user.id,
+        action="APPROVE_USER",
+        details=f"Approved user {target_user.email} (Role: {target_user.role.value})"
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(target_user)
+
+    create_system_notification(
+        db=db,
+        user_id=target_user.id,
+        title="Application Approved! 🎉",
+        message="Your FoodFlow account application has been approved by Super Admin. You now have full portal access.",
+        notif_type="SYSTEM"
+    )
+
+    return target_user
+
+@router.put("/users/{user_id}/reject", response_model=UserResponse)
+def reject_user_by_admin(
+    user_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target_user.is_approved = False
+    target_user.is_active = False
+
+    if target_user.delivery_profile:
+        target_user.delivery_profile.is_verified = False
+        target_user.delivery_profile.is_online = False
+
+    log = AuditLog(
+        admin_id=current_user.id,
+        action="REJECT_USER",
+        details=f"Rejected user {target_user.email} (Role: {target_user.role.value})"
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(target_user)
+
+    return target_user
+
 @router.delete("/users/{user_id}")
 def delete_user_by_admin(
     user_id: int,

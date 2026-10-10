@@ -156,6 +156,56 @@ class AuthRepository {
     }
   }
 
+  Future<UserModel> registerRider({
+    required String email,
+    required String password,
+    required String fullName,
+    String? phone,
+    String vehicleType = 'SCOOTER',
+    String? vehicleNumber,
+  }) async {
+    try {
+      final response = await apiClient.dio.post(
+        '/auth/register-rider',
+        data: {
+          'email': email.trim().toLowerCase(),
+          'password': password,
+          'full_name': fullName.trim(),
+          'phone': phone?.trim(),
+          'vehicle_type': vehicleType,
+          'vehicle_number': (vehicleNumber != null && vehicleNumber.trim().isNotEmpty)
+              ? vehicleNumber.trim().toUpperCase()
+              : (vehicleType == 'BICYCLE' ? 'BICYCLE' : 'NOT_SPECIFIED'),
+        },
+      );
+
+      final token = response.data['access_token'];
+      final user = UserModel.fromJson(response.data['user']);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(AppConstants.authTokenKey, token);
+      await prefs.setString(AppConstants.userKey, jsonEncode(user.toJson()));
+
+      return user;
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.receiveTimeout) {
+        throw Exception('Server connection timed out. Please check network.');
+      } else if (e.type == DioExceptionType.connectionError) {
+        throw Exception('Unable to reach server at ${AppConstants.baseUrl}. Check Wi-Fi.');
+      }
+      final detail = e.response?.data is Map ? e.response?.data['detail'] : null;
+      String message = 'Rider registration failed';
+      if (detail is String) {
+        message = detail;
+      } else if (detail is List && detail.isNotEmpty) {
+        message = detail[0]['msg'] ?? 'Rider registration failed';
+      }
+      throw Exception(message);
+    } catch (e) {
+      throw Exception(e.toString().replaceAll('Exception: ', ''));
+    }
+  }
+
   Future<UserModel?> getCurrentUser() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString(AppConstants.authTokenKey);

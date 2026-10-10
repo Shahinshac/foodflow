@@ -117,6 +117,14 @@ class OwnerRegistrationRequest(BaseModel):
     min_order_paise: int = 10000
     estimated_delivery_time: str = "25-35 min"
 
+class RiderRegistrationRequest(BaseModel):
+    full_name: str
+    email: EmailStr
+    password: str
+    phone: Optional[str] = None
+    vehicle_type: Optional[str] = "SCOOTER"
+    vehicle_number: str
+
 class RestaurantResponse(RestaurantBase):
     id: int
     owner_id: Optional[int] = None

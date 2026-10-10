@@ -6,6 +6,7 @@ import '../features/auth/presentation/auth_providers.dart';
 import '../features/auth/presentation/splash_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/auth/presentation/register_screen.dart';
+import '../features/auth/presentation/rider_register_screen.dart';
 import '../features/restaurant/presentation/home_screen.dart';
 import '../features/restaurant/presentation/restaurant_detail_screen.dart';
 import '../features/cart/presentation/cart_screen.dart';
@@ -55,6 +56,8 @@ String? computeAppRedirect({
 
   final isLoginRoute = location == '/login' ||
       location == '/register' ||
+      location == '/rider/register' ||
+      location == '/rider-register' ||
       location == '/restaurant-login' ||
       location == '/delivery-login';
 
@@ -207,6 +210,22 @@ final routerProvider = Provider<GoRouter>((ref) {
           context: context,
           state: state,
           child: const RegisterScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/rider/register',
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const RiderRegisterScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/rider-register',
+        pageBuilder: (context, state) => _buildPageWithTransition(
+          context: context,
+          state: state,
+          child: const RiderRegisterScreen(),
         ),
       ),
       GoRoute(

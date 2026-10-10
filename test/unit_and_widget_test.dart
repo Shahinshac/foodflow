@@ -17,6 +17,7 @@ import 'package:foodflow/core/constants/app_constants.dart';
 import 'package:foodflow/core/widgets/pwa_install_guide_dialog.dart';
 import 'package:foodflow/features/auth/data/auth_repository.dart';
 import 'package:foodflow/features/admin/presentation/admin_dashboard_screen.dart';
+import 'package:foodflow/features/auth/presentation/rider_register_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class MockAuthRepo extends AuthRepository {
@@ -1041,4 +1042,104 @@ void main() {
       );
     });
   });
+
+  group('Delivery Rider Self-Registration & Verification Flow Tests', () {
+    test('Router allows /rider/register and /rider-register without unauthenticated redirect loop', () {
+      // 1. Unauthenticated visiting /rider/register is allowed directly
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/rider/register',
+          isWeb: true,
+        ),
+        isNull,
+      );
+
+      // 2. Unauthenticated visiting /rider-register is allowed directly
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/rider-register',
+          isWeb: true,
+        ),
+        isNull,
+      );
+
+      // 3. Authenticated DELIVERY_PARTNER role stays on /rider
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: true,
+          role: 'DELIVERY_PARTNER',
+          location: '/rider',
+          isWeb: true,
+        ),
+        isNull,
+      );
+
+      // 4. Authenticated CUSTOMER attempting staff route is redirected to /
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: true,
+          role: 'CUSTOMER',
+          location: '/rider',
+          isWeb: true,
+        ),
+        '/',
+      );
+    });
+
+    testWidgets('Rider Login Screen renders Register as Delivery Rider action button', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 800));
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authProvider.overrideWith((ref) => FakeAuthNotifier(null)),
+          ],
+          child: const MaterialApp(
+            home: LoginScreen(forcedRole: 'DELIVERY_PARTNER'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delivery Rider Login'), findsOneWidget);
+      expect(find.text('🛵 Register as Delivery Rider'), findsOneWidget);
+    });
+
+    testWidgets('Rider Register Screen validates required fields and password matching', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 800));
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authProvider.overrideWith((ref) => FakeAuthNotifier(null)),
+          ],
+          child: const MaterialApp(
+            home: RiderRegisterScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Partner Registration'), findsOneWidget);
+      expect(find.text('Submit Application'), findsOneWidget);
+
+      // Tap submit with empty fields -> validations trigger
+      await tester.tap(find.text('Submit Application'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Full name is required'), findsOneWidget);
+      expect(find.text('Email is required'), findsOneWidget);
+      expect(find.text('Phone number is required for delivery partners'), findsOneWidget);
+      expect(find.text('Password is required'), findsOneWidget);
+    });
+  });
 }
+
