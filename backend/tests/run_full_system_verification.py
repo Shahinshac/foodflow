@@ -155,12 +155,12 @@ def run_all_audits():
     assert order_create_resp.status_code == 200
     order_data = order_create_resp.json()
     order_id = order_data["id"]
-    # Calculation: subtotal 38000 + delivery 3500 + tax (5% of 38000 = 1900) - discount 0 = 43400 (₹434.00)
+    # Calculation: subtotal 38000 + welcome free delivery 0 + tax (5% of 38000 = 1900) - discount 0 = 39900 (₹399.00)
     assert order_data["subtotal_paise"] == 38000
-    assert order_data["delivery_fee_paise"] == 3500
+    assert order_data["delivery_fee_paise"] == 0
     assert order_data["tax_paise"] == 1900
-    assert order_data["total_paise"] == 43400
-    record("E2E-03", "Customer Order Placement", "Customer discovers store, adds item, and checks out COD", "Order created with state PLACED, total ₹434.00", f"Order ID {order_id}, total_paise 43400", "PASS", f"ORDER ID: {order_id}")
+    assert order_data["total_paise"] == 39900
+    record("E2E-03", "Customer Order Placement", "Customer discovers store, adds item, and checks out COD", "Order created with state RESTAURANT_CONFIRMED, total ₹399.00", f"Order ID {order_id}, total_paise 39900", "PASS", f"ORDER ID: {order_id}")
 
     # Step 4: Owner finds incoming order and moves through preparation states
     owner_orders = client.get("/owner/orders", headers=owner_headers).json()
@@ -224,9 +224,9 @@ def run_all_audits():
     # Step 7: Admin verifies final order status, GMV, Net Revenue, and Platform Metrics
     adm_analytics = client.get("/admin/analytics?timeframe=all", headers=adm_headers).json()
     assert adm_analytics["completed_orders"] >= 1
-    assert adm_analytics["gross_order_value_paise"] >= 43400
-    assert adm_analytics["net_revenue_paise"] >= 43400
-    record("E2E-07", "Admin Analytics Verification", "Admin checks GMV, Completed Order counts, and Net Revenue", "Analytics correctly reflect completed order of ₹434.00", f"GMV: ₹{adm_analytics['gross_order_value_paise']/100:.2f}, Completed Orders: {adm_analytics['completed_orders']}", "PASS", f"GMV: {adm_analytics['gross_order_value_paise']}")
+    assert adm_analytics["gross_order_value_paise"] >= 39900
+    assert adm_analytics["net_revenue_paise"] >= 39900
+    record("E2E-07", "Admin Analytics Verification", "Admin checks GMV, Completed Order counts, and Net Revenue", "Analytics correctly reflect completed order of ₹399.00", f"GMV: ₹{adm_analytics['gross_order_value_paise']/100:.2f}, Completed Orders: {adm_analytics['completed_orders']}", "PASS", f"GMV: {adm_analytics['gross_order_value_paise']}")
 
     # -------------------------------------------------------------------------
     # WORKFLOW 2: DUAL ONBOARDING & APPROVAL/REJECTION LIFECYCLE

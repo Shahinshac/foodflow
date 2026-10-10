@@ -9,6 +9,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/dialer_helper.dart';
 import '../../../core/widgets/error_and_empty_views.dart';
 import '../../auth/presentation/auth_providers.dart';
 
@@ -514,11 +515,12 @@ class _LiveMapTrackingScreenState extends ConsumerState<LiveMapTrackingScreen> {
                           ),
                           IconButton(
                             icon: const Icon(Icons.phone, color: Colors.green),
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Calling ${data.riderPhone ?? "Delivery Partner"}...')),
-                              );
-                            },
+                            tooltip: 'Call Delivery Partner',
+                            onPressed: () => DialerHelper.openDialer(
+                              context,
+                              data.riderPhone,
+                              contactLabel: 'Delivery Partner',
+                            ),
                           ),
                         ],
                       ),

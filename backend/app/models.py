@@ -107,6 +107,7 @@ class Restaurant(Base):
     opening_time = Column(String, default="09:00 AM")
     closing_time = Column(String, default="11:00 PM")
     prep_time_minutes = Column(Integer, default=25)
+    upi_id = Column(String, nullable=True)
     rejection_reason = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

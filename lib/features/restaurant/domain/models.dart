@@ -59,6 +59,8 @@ class RestaurantModel {
   final bool isFavorite;
   final int activeOffersCount;
   final String? rejectionReason;
+  final String? upiId;
+  final String? ownerPhone;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -81,6 +83,8 @@ class RestaurantModel {
     this.isFavorite = false,
     this.activeOffersCount = 0,
     this.rejectionReason,
+    this.upiId,
+    this.ownerPhone,
     this.createdAt,
     this.updatedAt,
   });
@@ -105,6 +109,8 @@ class RestaurantModel {
       isFavorite: json['is_favorite'] ?? false,
       activeOffersCount: json['active_offers_count'] ?? 0,
       rejectionReason: json['rejection_reason'],
+      upiId: json['upi_id'],
+      ownerPhone: json['owner_phone'],
       createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at']) : null,
       updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at']) : null,
     );
@@ -137,6 +143,8 @@ class RestaurantModel {
       isFavorite: isFavorite ?? this.isFavorite,
       activeOffersCount: activeOffersCount ?? this.activeOffersCount,
       rejectionReason: rejectionReason ?? this.rejectionReason,
+      upiId: upiId,
+      ownerPhone: ownerPhone,
       createdAt: createdAt,
       updatedAt: updatedAt,
     );
@@ -400,6 +408,8 @@ class OrderModel {
   final bool isRefunded;
   final int calculatedEtaMinutes;
   final String createdAt;
+  final String? customerName;
+  final String? customerPhone;
   final List<OrderItemModel> items;
 
   OrderModel({
@@ -420,6 +430,8 @@ class OrderModel {
     this.isRefunded = false,
     this.calculatedEtaMinutes = 35,
     required this.createdAt,
+    this.customerName,
+    this.customerPhone,
     required this.items,
   });
 
@@ -442,6 +454,8 @@ class OrderModel {
       isRefunded: json['is_refunded'] ?? false,
       calculatedEtaMinutes: json['calculated_eta_minutes'] ?? 35,
       createdAt: json['created_at'],
+      customerName: json['user'] != null ? json['user']['full_name'] : null,
+      customerPhone: json['user'] != null ? json['user']['phone'] : null,
       items: (json['items'] as List)
           .map((item) => OrderItemModel.fromJson(item))
           .toList(),

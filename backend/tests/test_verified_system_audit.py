@@ -143,7 +143,23 @@ def test_coupon_boundary_and_total_calculations():
     c_percent = Coupon(code="MEGADEAL", discount_type="PERCENTAGE", discount_value=50, min_order_paise=20000, max_discount_paise=10000, usage_limit=5, per_user_limit=2, is_active=True)
     c_flat = Coupon(code="FLAT50", discount_type="FLAT", discount_value=5000, min_order_paise=15000, usage_limit=10, per_user_limit=1, is_active=True)
     c_freedel = Coupon(code="FREEDEL", discount_type="FREE_DELIVERY", discount_value=0, min_order_paise=10000, usage_limit=10, per_user_limit=1, is_active=True)
-    db.add_all([c_percent, c_flat, c_freedel])
+    
+    # Prior completed order so customer is established (tests standard delivery fee arithmetic)
+    from datetime import timedelta
+    prior_order = Order(
+        user_id=cust.id,
+        restaurant_id=rest.id,
+        status=OrderStatus.DELIVERED,
+        subtotal_paise=10000,
+        delivery_fee_paise=4000,
+        tax_paise=500,
+        discount_paise=0,
+        total_paise=14500,
+        delivery_address="Past Address",
+        payment_method="COD",
+        created_at=datetime.utcnow() - timedelta(days=5)
+    )
+    db.add_all([c_percent, c_flat, c_freedel, prior_order])
     db.commit()
 
     cust_token = create_access_token({"sub": cust.email})

@@ -187,6 +187,96 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen>
     }
   }
 
+  void _updateUpiId(String upiId) async {
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      await apiClient.dio.put('/owner/restaurant/settings', data: {'upi_id': upiId.trim()});
+      ref.invalidate(ownerRestaurantProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('UPI ID updated successfully!'),
+            backgroundColor: AppColors.veg,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update UPI ID: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
+  }
+
+  void _showEditUpiDialog(RestaurantModel restaurant) {
+    final upiCtrl = TextEditingController(text: restaurant.upiId ?? '');
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.qr_code_2_rounded, color: AppColors.primary),
+            SizedBox(width: 8),
+            Text('UPI ID Settings', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Enter your restaurant\'s UPI ID (VPA) for receiving direct customer payments when riders deliver orders via UPI-at-Delivery.',
+                style: TextStyle(fontSize: 13, color: Colors.black54),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: upiCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'UPI ID (VPA)',
+                  hintText: 'e.g. restaurant@okaxis or 9876543210@upi',
+                  prefixIcon: Icon(Icons.payment_rounded),
+                ),
+                validator: (v) {
+                  if (v == null || v.trim().isEmpty) return 'UPI ID cannot be empty';
+                  if (!v.contains('@')) return 'Enter a valid UPI ID containing "@" (e.g. name@bank)';
+                  return null;
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                final newUpi = upiCtrl.text.trim();
+                Navigator.pop(ctx);
+                _updateUpiId(newUpi);
+              }
+            },
+            child: const Text('Save UPI ID'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showCreatePromoDialog() {
     final codeCtrl = TextEditingController();
     final titleCtrl = TextEditingController();
@@ -377,13 +467,13 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen>
             final parsed = double.tryParse(val.trim());
             if (parsed == null || parsed <= 0) return;
             if (!quarterOverridden) {
-              quarterCtrl.text = (parsed * 0.35).round().toString();
+              quarterCtrl.text = (parsed * 0.25).round().toString();
             }
             if (!halfOverridden) {
-              halfCtrl.text = (parsed * 0.60).round().toString();
+              halfCtrl.text = (parsed * 0.50).round().toString();
             }
             if (!threeQuarterOverridden) {
-              threeQuarterCtrl.text = (parsed * 0.85).round().toString();
+              threeQuarterCtrl.text = (parsed * 0.75).round().toString();
             }
             if (!fullOverridden) {
               fullCtrl.text = parsed.round().toString();
@@ -478,7 +568,7 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen>
                                 children: [
                                   const Text('Portion-Based Pricing', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                                   Text(
-                                    'Quarter (35%), Half (60%), 3/4 (85%), Full (100%)',
+                                    'Quarter (25%), Half (50%), 3/4 (75%), Full (100%)',
                                     style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                                   ),
                                 ],
@@ -686,6 +776,7 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen>
     final delFeeCtrl = TextEditingController(text: '30');
     final minOrderCtrl = TextEditingController(text: '100');
     final estTimeCtrl = TextEditingController(text: '25-35 min');
+    final upiCtrl = TextEditingController();
     String? uploadedImageUrl;
     bool isUploading = false;
 
@@ -769,6 +860,15 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen>
                     controller: estTimeCtrl,
                     decoration: const InputDecoration(labelText: 'Estimated Delivery Time', hintText: 'e.g. 25-35 min'),
                   ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: upiCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'UPI ID for Delivery QR Payments (Optional)',
+                      hintText: 'e.g. restaurant@okaxis',
+                      prefixIcon: Icon(Icons.qr_code_2_rounded),
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   Row(
                     children: [
@@ -834,6 +934,7 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen>
                                 'image_url': uploadedImageUrl,
                                 'is_open': true,
                                 'prep_time_minutes': 25,
+                                'upi_id': upiCtrl.text.trim().isNotEmpty ? upiCtrl.text.trim() : null,
                               },
                             );
                             ref.invalidate(ownerRestaurantProvider);
@@ -1502,6 +1603,68 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen>
                           );
                         }).toList(),
                       ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                // UPI Payments at Delivery Settings Card
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: AppColors.softShadow,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.qr_code_2_rounded, color: AppColors.primary),
+                              SizedBox(width: 8),
+                              Text('UPI at Delivery', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          TextButton.icon(
+                            icon: const Icon(Icons.edit_outlined, size: 16),
+                            label: Text(restaurant.upiId == null || restaurant.upiId!.isEmpty ? 'Set UPI ID' : 'Edit'),
+                            onPressed: () => _showEditUpiDialog(restaurant),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        restaurant.upiId == null || restaurant.upiId!.isEmpty
+                            ? 'No UPI ID configured. Riders will not be able to generate dynamic UPI QR codes for customer payments at delivery.'
+                            : 'Configured UPI ID: ${restaurant.upiId}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: restaurant.upiId != null && restaurant.upiId!.isNotEmpty ? FontWeight.w600 : FontWeight.normal,
+                          color: restaurant.upiId != null && restaurant.upiId!.isNotEmpty ? Colors.black87 : Colors.grey.shade600,
+                        ),
+                      ),
+                      if (restaurant.upiId != null && restaurant.upiId!.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.green.shade200),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check_circle_outline, color: Colors.green, size: 14),
+                              SizedBox(width: 4),
+                              Text('Active for Dynamic Rider QR Payments', style: TextStyle(color: Colors.green, fontSize: 11, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

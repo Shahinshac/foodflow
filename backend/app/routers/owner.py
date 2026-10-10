@@ -55,6 +55,7 @@ def onboard_restaurant(
         opening_time=rest_in.opening_time,
         closing_time=rest_in.closing_time,
         prep_time_minutes=rest_in.prep_time_minutes,
+        upi_id=rest_in.upi_id,
         is_active=False,
         is_approved=False
     )
@@ -112,6 +113,8 @@ def update_restaurant_profile(
     restaurant.opening_time = rest_in.opening_time
     restaurant.closing_time = rest_in.closing_time
     restaurant.prep_time_minutes = rest_in.prep_time_minutes
+    if rest_in.upi_id is not None:
+        restaurant.upi_id = rest_in.upi_id
 
     db.commit()
     db.refresh(restaurant)
@@ -143,6 +146,8 @@ def update_restaurant_settings(
         restaurant.min_order_paise = settings.min_order_paise
     if settings.image_url is not None:
         restaurant.image_url = settings.image_url
+    if settings.upi_id is not None:
+        restaurant.upi_id = settings.upi_id
 
     db.commit()
     db.refresh(restaurant)

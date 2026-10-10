@@ -10,6 +10,8 @@ import '../../../core/utils/currency_formatter.dart';
 import '../../../core/widgets/dashboard_sidebar.dart';
 import '../../../core/widgets/error_and_empty_views.dart';
 import '../../../core/widgets/motion_system.dart';
+import '../../../core/utils/dialer_helper.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import '../../auth/presentation/auth_providers.dart';
 
 class DeliveryProfileModel {
@@ -44,8 +46,14 @@ class DeliveryAssignmentModel {
   final String status;
   final String restaurantName;
   final String restaurantAddress;
+  final String? restaurantPhone;
+  final String? upiId;
   final String deliveryAddress;
   final int totalPaise;
+  final String? customerName;
+  final String? customerPhone;
+  final String paymentMethod;
+  final String paymentStatus;
 
   DeliveryAssignmentModel({
     required this.id,
@@ -53,20 +61,35 @@ class DeliveryAssignmentModel {
     required this.status,
     required this.restaurantName,
     required this.restaurantAddress,
+    this.restaurantPhone,
+    this.upiId,
     required this.deliveryAddress,
     required this.totalPaise,
+    this.customerName,
+    this.customerPhone,
+    required this.paymentMethod,
+    required this.paymentStatus,
   });
 
   factory DeliveryAssignmentModel.fromJson(Map<String, dynamic> json) {
-    final order = json['order'];
+    final order = json['order'] as Map<String, dynamic>;
+    final restaurant = order['restaurant'] as Map<String, dynamic>?;
+    final customer = order['user'] as Map<String, dynamic>?;
+
     return DeliveryAssignmentModel(
       id: json['id'],
       orderId: order['id'],
       status: json['status'],
-      restaurantName: order['restaurant']['name'],
-      restaurantAddress: order['restaurant']['address_text'] ?? '',
-      deliveryAddress: order['delivery_address'],
-      totalPaise: order['total_paise'],
+      restaurantName: restaurant?['name'] ?? 'Restaurant',
+      restaurantAddress: restaurant?['address_text'] ?? '',
+      restaurantPhone: restaurant?['owner_phone'],
+      upiId: restaurant?['upi_id'],
+      deliveryAddress: order['delivery_address'] ?? '',
+      totalPaise: order['total_paise'] ?? 0,
+      customerName: customer?['full_name'],
+      customerPhone: customer?['phone'],
+      paymentMethod: order['payment_method'] ?? 'COD',
+      paymentStatus: order['payment_status'] ?? 'PENDING',
     );
   }
 }
@@ -214,6 +237,157 @@ class _DeliveryDashboardScreenState extends ConsumerState<DeliveryDashboardScree
         );
       }
     }
+  }
+
+  void _acceptAssignment(int assignmentId) async {
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      await apiClient.dio.post('/delivery/assignments/$assignmentId/accept');
+      ref.invalidate(deliveryAssignmentsProvider);
+      ref.invalidate(deliveryProfileProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Order accepted! Proceed to pickup at restaurant.'),
+            backgroundColor: AppColors.veg,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      ref.invalidate(deliveryAssignmentsProvider);
+      if (mounted) {
+        final errorMsg = e.toString().contains('409') || e.toString().contains('Already accepted')
+            ? 'Already accepted by another rider.'
+            : 'Failed to accept order: $e';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMsg), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  void _showUpiQrDialog(DeliveryAssignmentModel item) {
+    final upiId = item.upiId;
+    final totalAmount = (item.totalPaise / 100).toStringAsFixed(2);
+    final upiPayload = (upiId != null && upiId.isNotEmpty)
+        ? 'upi://pay?pa=$upiId&pn=${Uri.encodeComponent(item.restaurantName)}&am=$totalAmount&cu=INR&tn=${Uri.encodeComponent("Order #${item.orderId}")}'
+        : null;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            const Icon(Icons.qr_code_scanner_rounded, color: AppColors.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'UPI at Delivery - Order #${item.orderId}',
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Payable Amount: ₹$totalAmount',
+                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: AppColors.primary),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Restaurant: ${item.restaurantName}',
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              if (upiPayload != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: QrImageView(
+                    data: upiPayload,
+                    version: QrVersions.auto,
+                    size: 200.0,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SelectableText(
+                    'UPI ID: $upiId',
+                    style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Customer can scan with Google Pay, PhonePe, Paytm, or any UPI app to pay directly to the restaurant.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: Colors.black54),
+                ),
+              ] else ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.amber.shade300),
+                  ),
+                  child: const Column(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.amber, size: 36),
+                      SizedBox(height: 8),
+                      Text(
+                        'The restaurant has not configured a UPI ID yet.\n\nPlease collect ₹ amount via Cash on Delivery or request restaurant to update their UPI ID in Partner Portal.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13, color: Colors.black87),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.security_rounded, size: 16, color: Colors.blue),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Verify payment confirmation on customer\'s screen or bank SMS before marking delivered.',
+                        style: TextStyle(fontSize: 11, color: Colors.blue),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _toggleOnline() async {
@@ -490,13 +664,90 @@ class _DeliveryDashboardScreenState extends ConsumerState<DeliveryDashboardScree
                                 ],
                               ),
                               const SizedBox(height: 6),
+                              if (item.customerName != null && item.customerName!.isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    Icon(Icons.person_outline, size: 16, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                                    const SizedBox(width: 8),
+                                    Text('Customer: ${item.customerName}', style: TextStyle(color: isDark ? Colors.grey.shade300 : Colors.grey.shade700, fontSize: 13, fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                              ],
+                              const SizedBox(height: 6),
                               Row(
                                 children: [
-                                  Icon(Icons.payments, size: 16, color: isDark ? Colors.grey.shade400 : Colors.grey.shade500),
+                                  Icon(Icons.payments_outlined, size: 16, color: isDark ? Colors.grey.shade400 : Colors.grey.shade500),
                                   const SizedBox(width: 8),
-                                  Text('Order Value: ${CurrencyFormatter.formatPaise(item.totalPaise)}', style: TextStyle(fontWeight: FontWeight.w700, color: isDark ? Colors.white : Colors.black87)),
+                                  Text('Order Value: ${CurrencyFormatter.formatPaise(item.totalPaise)} • ', style: TextStyle(fontWeight: FontWeight.w700, color: isDark ? Colors.white : Colors.black87)),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: item.paymentMethod == 'UPI_AT_DELIVERY'
+                                          ? Colors.purple.withValues(alpha: 0.15)
+                                          : (item.paymentMethod == 'COD' ? Colors.orange.withValues(alpha: 0.15) : Colors.green.withValues(alpha: 0.15)),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      item.paymentMethod == 'UPI_AT_DELIVERY' ? 'UPI at Delivery' : item.paymentMethod,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color: item.paymentMethod == 'UPI_AT_DELIVERY'
+                                            ? Colors.purple
+                                            : (item.paymentMethod == 'COD' ? Colors.orange.shade800 : Colors.green.shade800),
+                                      ),
+                                    ),
+                                  ),
                                 ],
                               ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  if (item.restaurantPhone != null && item.restaurantPhone!.isNotEmpty)
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        icon: const Icon(Icons.call_rounded, size: 16),
+                                        label: const Text('Call Store', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                        style: OutlinedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(vertical: 8),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        ),
+                                        onPressed: () => DialerHelper.openDialer(context, item.restaurantPhone, contactLabel: 'Restaurant'),
+                                      ),
+                                    ),
+                                  if (item.restaurantPhone != null && item.restaurantPhone!.isNotEmpty && item.customerPhone != null && item.customerPhone!.isNotEmpty)
+                                    const SizedBox(width: 8),
+                                  if (item.customerPhone != null && item.customerPhone!.isNotEmpty)
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        icon: const Icon(Icons.phone_in_talk_rounded, size: 16),
+                                        label: const Text('Call Customer', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                        style: OutlinedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(vertical: 8),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        ),
+                                        onPressed: () => DialerHelper.openDialer(context, item.customerPhone, contactLabel: 'Customer'),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              if (item.paymentMethod == 'UPI_AT_DELIVERY' && item.status != 'DELIVERED') ...[
+                                const SizedBox(height: 10),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton.icon(
+                                    icon: const Icon(Icons.qr_code_2_rounded, color: Colors.purple),
+                                    label: const Text('Show Restaurant UPI QR to Customer', style: TextStyle(color: Colors.purple, fontWeight: FontWeight.bold)),
+                                    style: OutlinedButton.styleFrom(
+                                      side: const BorderSide(color: Colors.purple),
+                                      padding: const EdgeInsets.symmetric(vertical: 10),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    ),
+                                    onPressed: () => _showUpiQrDialog(item),
+                                  ),
+                                ),
+                              ],
                               Padding(
                                 padding: const EdgeInsets.symmetric(vertical: 14.0),
                                 child: Divider(height: 1, color: isDark ? Colors.grey.shade800 : Colors.grey.shade200),
@@ -508,30 +759,40 @@ class _DeliveryDashboardScreenState extends ConsumerState<DeliveryDashboardScree
                                   width: double.infinity,
                                   child: ElevatedButton(
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: item.status == 'OUT_FOR_DELIVERY' ? Colors.green : AppColors.primary,
+                                      backgroundColor: item.status == 'ASSIGNED'
+                                          ? AppColors.primary
+                                          : (item.status == 'OUT_FOR_DELIVERY' || item.status == 'ARRIVED_AT_CUSTOMER' ? Colors.green : AppColors.primary),
                                       foregroundColor: Colors.white,
                                       padding: const EdgeInsets.symmetric(vertical: 14),
                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                     ),
                                     onPressed: () {
                                       if (item.status == 'ASSIGNED') {
+                                        _acceptAssignment(item.id);
+                                      } else if (item.status == 'ACCEPTED') {
                                         _updateStatus(item.id, item.orderId, 'ARRIVED_AT_RESTAURANT');
                                       } else if (item.status == 'ARRIVED_AT_RESTAURANT') {
                                         _updateStatus(item.id, item.orderId, 'PICKED_UP');
                                       } else if (item.status == 'PICKED_UP') {
                                         _updateStatus(item.id, item.orderId, 'OUT_FOR_DELIVERY');
                                       } else if (item.status == 'OUT_FOR_DELIVERY') {
+                                        _updateStatus(item.id, item.orderId, 'ARRIVED_AT_CUSTOMER');
+                                      } else if (item.status == 'ARRIVED_AT_CUSTOMER') {
                                         _updateStatus(item.id, item.orderId, 'DELIVERED');
                                       }
                                     },
                                     child: Text(
                                       item.status == 'ASSIGNED'
-                                          ? 'Arrived at Restaurant'
-                                          : item.status == 'ARRIVED_AT_RESTAURANT'
-                                              ? 'Picked Up Food'
-                                              : item.status == 'PICKED_UP'
-                                                  ? 'Start Delivery (Out for Delivery)'
-                                                  : 'Confirm Delivered to Customer',
+                                          ? 'Accept Delivery Order'
+                                          : item.status == 'ACCEPTED'
+                                              ? 'Arrived at Restaurant'
+                                              : item.status == 'ARRIVED_AT_RESTAURANT'
+                                                  ? 'Food Picked Up'
+                                                  : item.status == 'PICKED_UP'
+                                                      ? 'Start Delivery (Out for Delivery)'
+                                                      : item.status == 'OUT_FOR_DELIVERY'
+                                                          ? 'Arrived at Customer Doorstep'
+                                                          : 'Confirm Delivered to Customer',
                                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                                     ),
                                   ),

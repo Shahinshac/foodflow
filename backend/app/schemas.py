@@ -93,6 +93,7 @@ class RestaurantBase(BaseModel):
     opening_time: str = "09:00 AM"
     closing_time: str = "11:00 PM"
     prep_time_minutes: int = 25
+    upi_id: Optional[str] = None
 
 class RestaurantCreate(RestaurantBase):
     pass
@@ -153,6 +154,7 @@ class RestaurantSettingsUpdate(BaseModel):
     delivery_fee_paise: Optional[int] = None
     min_order_paise: Optional[int] = None
     image_url: Optional[str] = None
+    upi_id: Optional[str] = None
 
 # Coupon & Promotion Schemas
 class CouponBase(BaseModel):
@@ -282,6 +284,7 @@ class OrderResponse(BaseModel):
     created_at: datetime
     items: List[OrderItemResponse]
     status_history: List[OrderStatusHistoryResponse] = []
+    user: Optional[UserResponse] = None
     model_config = ConfigDict(from_attributes=True)
 
 class OrderStatusUpdate(BaseModel):

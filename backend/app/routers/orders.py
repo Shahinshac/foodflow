@@ -108,7 +108,7 @@ def create_order(
         delivery_lat=order_in.delivery_lat or 12.9716,
         delivery_lng=order_in.delivery_lng or 77.5946,
         payment_method=order_in.payment_method,
-        payment_status="COMPLETED" if order_in.payment_method != "COD" else "PENDING",
+        payment_status="COMPLETED" if order_in.payment_method == "ONLINE" else "PENDING",
         prep_estimate_minutes=restaurant.prep_time_minutes,
         travel_estimate_minutes=15,
         calculated_eta_minutes=restaurant.prep_time_minutes + 15,
@@ -331,7 +331,7 @@ def cancel_order(
     order.cancelled_at = datetime.utcnow()
 
     # Refund state handling
-    if order.payment_status == "COMPLETED" or order.payment_method != "COD":
+    if order.payment_status == "COMPLETED":
         order.is_refunded = True
         order.payment_status = "REFUNDED"
 
