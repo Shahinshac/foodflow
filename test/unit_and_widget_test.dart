@@ -1,11 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:foodflow/core/theme/app_colors.dart';
 import 'package:foodflow/core/utils/currency_formatter.dart';
 import 'package:dio/dio.dart';
 import 'package:foodflow/core/network/api_client.dart';
 import 'package:foodflow/features/auth/presentation/auth_providers.dart';
+import 'package:foodflow/features/auth/presentation/login_screen.dart';
+import 'package:foodflow/features/restaurant/presentation/home_screen.dart';
 import 'package:foodflow/features/auth/presentation/profile_screen.dart';
 import 'package:foodflow/features/restaurant/domain/models.dart';
 import 'package:foodflow/routing/app_router.dart';
@@ -177,7 +181,7 @@ void main() {
   });
 
   group('Router Redirect Logic & Loop Prevention Tests', () {
-    test('Loading state holds on /splash and redirects any other route to /splash', () {
+    test('Loading state preserves requested routes and does not wipe direct URLs', () {
       expect(
         computeAppRedirect(
           isLoading: true,
@@ -193,10 +197,30 @@ void main() {
           isLoading: true,
           isAuthenticated: false,
           role: null,
-          location: '/login',
-          isWeb: false,
+          location: '/admin',
+          isWeb: true,
         ),
-        '/splash',
+        isNull,
+      );
+      expect(
+        computeAppRedirect(
+          isLoading: true,
+          isAuthenticated: false,
+          role: null,
+          location: '/owner',
+          isWeb: true,
+        ),
+        isNull,
+      );
+      expect(
+        computeAppRedirect(
+          isLoading: true,
+          isAuthenticated: false,
+          role: null,
+          location: '/rider',
+          isWeb: true,
+        ),
+        isNull,
       );
       expect(
         computeAppRedirect(
@@ -204,9 +228,9 @@ void main() {
           isAuthenticated: false,
           role: null,
           location: '/',
-          isWeb: false,
+          isWeb: true,
         ),
-        '/splash',
+        isNull,
       );
     });
 
@@ -674,6 +698,120 @@ void main() {
       expect(address.city, 'Bengaluru');
       expect(address.pincode, '560001');
       expect(address.isDefault, true);
+    });
+  });
+
+  group('Router Direct Route Widget Rendering Tests', () {
+    testWidgets('Direct route "/" renders HomeScreen when unauthenticated', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final router = GoRouter(
+        initialLocation: '/',
+        routes: [
+          GoRoute(path: '/', builder: (context, state) => const HomeScreen()),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp.router(
+            routerConfig: router,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+    });
+
+    testWidgets('Direct route "/admin" renders Admin Login Screen when unauthenticated', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final router = GoRouter(
+        initialLocation: '/admin',
+        routes: [
+          GoRoute(
+            path: '/admin',
+            builder: (context, state) => const LoginScreen(forcedRole: 'ADMIN'),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp.router(
+            routerConfig: router,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.byType(LoginScreen), findsOneWidget);
+      expect(find.text('Admin Portal'), findsOneWidget);
+      expect(find.text('Sign in with administrator credentials'), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+    });
+
+    testWidgets('Direct route "/owner" renders Restaurant Partner Login Screen when unauthenticated', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final router = GoRouter(
+        initialLocation: '/owner',
+        routes: [
+          GoRoute(
+            path: '/owner',
+            builder: (context, state) => const LoginScreen(forcedRole: 'RESTAURANT_OWNER'),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp.router(
+            routerConfig: router,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.byType(LoginScreen), findsOneWidget);
+      expect(find.text('Restaurant Partner Login'), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+    });
+
+    testWidgets('Direct route "/rider" renders Delivery Rider Login Screen when unauthenticated', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final router = GoRouter(
+        initialLocation: '/rider',
+        routes: [
+          GoRoute(
+            path: '/rider',
+            builder: (context, state) => const LoginScreen(forcedRole: 'DELIVERY_PARTNER'),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp.router(
+            routerConfig: router,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.byType(LoginScreen), findsOneWidget);
+      expect(find.text('Delivery Rider Login'), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
     });
   });
 }

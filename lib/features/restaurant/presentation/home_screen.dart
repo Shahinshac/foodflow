@@ -180,8 +180,8 @@ class _DesktopHomeViewState extends ConsumerState<_DesktopHomeView> {
                             Expanded(
                               flex: 62,
                               child: Container(
-                                height: 320,
-                                padding: const EdgeInsets.fromLTRB(36, 32, 28, 32),
+                                height: 330,
+                                padding: const EdgeInsets.fromLTRB(36, 24, 28, 24),
                                 decoration: BoxDecoration(
                                   color: Colors.white,
                                   borderRadius: BorderRadius.circular(28),

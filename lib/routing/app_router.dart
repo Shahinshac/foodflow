@@ -48,9 +48,9 @@ String? computeAppRedirect({
   required String location,
   required bool isWeb,
 }) {
-  // 1. Initial / Loading State: Hold at splash screen until auth resolves
+  // 1. Initial / Loading State: Preserve the requested location so deep-linking & direct URLs are not lost
   if (isLoading) {
-    return location == '/splash' ? null : '/splash';
+    return null;
   }
 
   final isLoginRoute = location == '/login' ||
@@ -60,8 +60,14 @@ String? computeAppRedirect({
 
   final isPublicBrowseRoute = location == '/' || location.startsWith('/restaurant/');
   final isAdminRoute = location == '/admin' || location == '/admin-dashboard';
-  final isOwnerRoute = location == '/owner' || location == '/owner-dashboard' || location == '/restaurant-owner' || location == '/restaurant-login';
-  final isDeliveryRoute = location == '/rider' || location == '/delivery' || location == '/delivery-dashboard' || location == '/delivery-login';
+  final isOwnerRoute = location == '/owner' ||
+      location == '/owner-dashboard' ||
+      location == '/restaurant-owner' ||
+      location == '/restaurant-login';
+  final isDeliveryRoute = location == '/rider' ||
+      location == '/delivery' ||
+      location == '/delivery-dashboard' ||
+      location == '/delivery-login';
 
   // 2. Unauthenticated User Flow (Guest browsing, Customer Login, Dedicated Staff Logins)
   if (!isAuthenticated) {
@@ -130,7 +136,7 @@ String? computeAppRedirect({
 
   // CUSTOMER role on Web:
   if (isAdminRoute || isOwnerRoute || isDeliveryRoute) {
-    return '/'; // Deny wrong role
+    return '/'; // Deny staff routes to Customer role
   }
   if (location == '/splash' || isLoginRoute) {
     return '/';
@@ -167,7 +173,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   final notifier = ref.watch(routerNotifierProvider);
 
   return GoRouter(
-    initialLocation: '/splash',
+    initialLocation: '/',
     refreshListenable: notifier,
     redirect: notifier.redirect,
     routes: [

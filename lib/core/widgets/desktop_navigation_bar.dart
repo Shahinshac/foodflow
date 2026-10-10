@@ -29,7 +29,7 @@ class DesktopNavigationBar extends ConsumerWidget {
 
     return Container(
       height: 76,
-      padding: const EdgeInsets.symmetric(horizontal: 32),
+      padding: const EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(
         color: isDark ? AppColors.surfaceDark : Colors.white,
         border: Border(
@@ -86,160 +86,175 @@ class DesktopNavigationBar extends ConsumerWidget {
                 ),
               ),
 
-              const SizedBox(width: 40),
+              const SizedBox(width: 20),
 
-              // Navigation Links
-              _NavLink(
-                label: 'Home',
-                isActive: true,
-                onTap: () => context.go('/'),
-              ),
-              _NavLink(
-                label: 'Restaurants',
-                isActive: false,
-                onTap: () => context.go('/'),
-              ),
-              _NavLink(
-                label: 'Categories',
-                isActive: false,
-                onTap: onCategoriesTap ?? () => context.go('/'),
-              ),
-              _NavLink(
-                label: 'Offers',
-                isActive: false,
-                onTap: onOffersTap ?? () => context.go('/'),
-              ),
-              _NavLink(
-                label: 'Orders',
-                isActive: false,
-                onTap: () {
-                  if (authState.isAuthenticated) {
-                    context.push('/orders');
-                  } else {
-                    context.push('/login');
-                  }
-                },
-              ),
-
-              const Spacer(),
-
-              // Location Selector Pill
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF3F4F6),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on_rounded,
-                      size: 16,
-                      color: AppColors.primary,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Kochi, Kerala',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: isDark ? Colors.white70 : const Color(0xFF374151),
+              // Navigation Links (Flexible to never overflow)
+              Flexible(
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _NavLink(
+                        label: 'Home',
+                        isActive: true,
+                        onTap: () => context.go('/'),
                       ),
-                    ),
-                    const SizedBox(width: 4),
-                    Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      size: 16,
-                      color: isDark ? Colors.white54 : const Color(0xFF6B7280),
-                    ),
-                  ],
+                      _NavLink(
+                        label: 'Restaurants',
+                        isActive: false,
+                        onTap: () => context.go('/'),
+                      ),
+                      _NavLink(
+                        label: 'Categories',
+                        isActive: false,
+                        onTap: onCategoriesTap ?? () => context.go('/'),
+                      ),
+                      _NavLink(
+                        label: 'Offers',
+                        isActive: false,
+                        onTap: onOffersTap ?? () => context.go('/'),
+                      ),
+                      _NavLink(
+                        label: 'Orders',
+                        isActive: false,
+                        onTap: () {
+                          if (authState.isAuthenticated) {
+                            context.push('/orders');
+                          } else {
+                            context.push('/login');
+                          }
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
 
               const SizedBox(width: 16),
 
-              // Cart Button with Badge
-              Stack(
-                clipBehavior: Clip.none,
+              // Right Actions Container
+              Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.shopping_bag_outlined, size: 24),
-                    style: IconButton.styleFrom(
-                      backgroundColor: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF3F4F6),
-                      padding: const EdgeInsets.all(10),
+                  // Location Selector Pill
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF3F4F6),
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    onPressed: () {
-                      if (authState.isAuthenticated) {
-                        context.push('/cart');
-                      } else {
-                        context.push('/login');
-                      }
-                    },
-                  ),
-                  if (cartCount > 0)
-                    Positioned(
-                      top: -4,
-                      right: -4,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.location_on_rounded,
+                          size: 16,
                           color: AppColors.primary,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: Colors.white, width: 1.5),
                         ),
-                        constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                        child: Text(
-                          '$cartCount',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
+                        const SizedBox(width: 6),
+                        Text(
+                          'Kochi, Kerala',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: isDark ? Colors.white70 : const Color(0xFF374151),
                           ),
                         ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          size: 16,
+                          color: isDark ? Colors.white54 : const Color(0xFF6B7280),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(width: 16),
+
+                  // Cart Button with Badge
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.shopping_bag_outlined, size: 24),
+                        style: IconButton.styleFrom(
+                          backgroundColor: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF3F4F6),
+                          padding: const EdgeInsets.all(10),
+                        ),
+                        onPressed: () {
+                          if (authState.isAuthenticated) {
+                            context.push('/cart');
+                          } else {
+                            context.push('/login');
+                          }
+                        },
+                      ),
+                      if (cartCount > 0)
+                        Positioned(
+                          top: -4,
+                          right: -4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: Colors.white, width: 1.5),
+                            ),
+                            constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                            child: Text(
+                              '$cartCount',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+
+                  const SizedBox(width: 16),
+
+                  // Auth Actions
+                  if (!authState.isAuthenticated) ...[
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.darkAction,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(96, 42),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        elevation: 0,
+                      ),
+                      onPressed: () => context.push('/login'),
+                      child: const Text(
+                        'Login',
+                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
                       ),
                     ),
-                ],
-              ),
-
-              const SizedBox(width: 16),
-
-              // Auth Actions
-              if (!authState.isAuthenticated) ...[
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.darkAction,
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(96, 42),
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                    elevation: 0,
-                  ),
-                  onPressed: () => context.push('/login'),
-                  child: const Text(
-                    'Login',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: isDark ? Colors.white : const Color(0xFF111827),
-                    side: BorderSide(
-                      color: isDark ? AppColors.borderDark : const Color(0xFFD1D5DB),
-                      width: 1.5,
+                    const SizedBox(width: 10),
+                    OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: isDark ? Colors.white : const Color(0xFF111827),
+                        side: BorderSide(
+                          color: isDark ? AppColors.borderDark : const Color(0xFFD1D5DB),
+                          width: 1.5,
+                        ),
+                        minimumSize: const Size(96, 42),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      ),
+                      onPressed: () => context.push('/register'),
+                      child: const Text(
+                        'Sign Up',
+                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                      ),
                     ),
-                    minimumSize: const Size(96, 42),
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  ),
-                  onPressed: () => context.push('/register'),
-                  child: const Text(
-                    'Sign Up',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-                  ),
-                ),
-              ] else ...[
+                  ] else ...[
                 // User Avatar / Role Portal Button
                 PopupMenuButton<String>(
                   offset: const Offset(0, 50),
@@ -343,10 +358,12 @@ class DesktopNavigationBar extends ConsumerWidget {
               ],
             ],
           ),
-        ),
+        ],
       ),
-    );
-  }
+    ),
+  ),
+);
+}
 }
 
 class _NavLink extends StatelessWidget {
@@ -365,7 +382,7 @@ class _NavLink extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14.0),
+      padding: const EdgeInsets.symmetric(horizontal: 6.0),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
