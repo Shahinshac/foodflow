@@ -49,11 +49,6 @@ String? computeAppRedirect({
   required String location,
   required bool isWeb,
 }) {
-  // 1. Initial / Loading State: Preserve the requested location so deep-linking & direct URLs are not lost
-  if (isLoading) {
-    return null;
-  }
-
   final isLoginRoute = location == '/login' ||
       location == '/register' ||
       location == '/rider/register' ||
@@ -61,7 +56,6 @@ String? computeAppRedirect({
       location == '/restaurant-login' ||
       location == '/delivery-login';
 
-  final isPublicBrowseRoute = location == '/' || location.startsWith('/restaurant/');
   final isAdminRoute = location == '/admin' || location == '/admin-dashboard';
   final isOwnerRoute = location == '/owner' ||
       location == '/owner-dashboard' ||
@@ -72,14 +66,36 @@ String? computeAppRedirect({
       location == '/delivery-dashboard' ||
       location == '/delivery-login';
 
+  // 1. Initial / Loading State:
+  // Display splash screen while auth status is being verified so unauthenticated users never see or flash customer home
+  if (isLoading) {
+    if (location == '/splash') {
+      return null;
+    }
+    // Allow dedicated direct URLs on web/deep-linking while loading
+    if (isLoginRoute || isAdminRoute || isOwnerRoute || isDeliveryRoute) {
+      return null;
+    }
+    return '/splash';
+  }
+
   // 2. Unauthenticated User Flow (Guest Access Completely Disabled):
   // Users must be authenticated before accessing customer routes (home, restaurants, cart, checkout, orders, etc.)
   if (!isAuthenticated) {
-    // Dedicated staff & auth URLs show their respective login/register screens directly without loops
-    if (isLoginRoute || isAdminRoute || isOwnerRoute || isDeliveryRoute) {
-      return null; // Allowed directly to render dedicated login/registration screen
+    if (!isWeb) {
+      // Mobile app is strictly for Customers and Riders only
+      if (isAdminRoute || isOwnerRoute) {
+        return '/login';
+      }
+      if (isLoginRoute || isDeliveryRoute) {
+        return null;
+      }
+      return '/login';
     }
-    // Any customer / protected route (/, /restaurant/:id, /cart, /checkout, /orders, /splash, etc.) redirects to /login
+    // Web platform allows dedicated admin and owner login portals
+    if (isLoginRoute || isAdminRoute || isOwnerRoute || isDeliveryRoute) {
+      return null;
+    }
     return '/login';
   }
 
@@ -175,7 +191,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   final notifier = ref.watch(routerNotifierProvider);
 
   return GoRouter(
-    initialLocation: '/',
+    initialLocation: '/splash',
     refreshListenable: notifier,
     redirect: notifier.redirect,
     routes: [

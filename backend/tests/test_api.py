@@ -1244,6 +1244,7 @@ def test_google_auth_and_role_protection():
     resp = client.post(
         "/auth/google",
         json={
+            "id_token": "test_google_token_role_protection",
             "email": "googlenewuser@example.com",
             "full_name": "Google New User",
             "avatar_url": "https://lh3.googleusercontent.com/a/photo.jpg"
@@ -1328,6 +1329,128 @@ def test_admin_profile_and_password_and_audit_logs():
     assert orders_resp.status_code == 200
 
     db.close()
+
+def test_google_auth_new_customer_created_strictly_as_customer():
+    db = TestingSessionLocal()
+    unique_email = "newgoogleuser@example.com"
+    # Ensure not in db
+    existing = db.query(User).filter(User.email == unique_email).first()
+    if existing:
+        db.delete(existing)
+        db.commit()
+
+    resp = client.post(
+        "/auth/google",
+        json={
+            "id_token": "test_google_token_new_user",
+            "email": unique_email,
+            "full_name": "New Google Customer"
+        }
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "access_token" in data
+    assert data["token_type"] == "bearer"
+    assert data["user"]["email"] == unique_email
+    assert data["user"]["full_name"] == "New Google Customer"
+    assert data["user"]["role"] == "CUSTOMER"
+
+    # Verify user in database
+    db_user = db.query(User).filter(User.email == unique_email).first()
+    assert db_user is not None
+    assert db_user.role == UserRole.CUSTOMER
+    assert db_user.is_active is True
+    assert db_user.is_approved is True
+    db.close()
+
+def test_google_auth_existing_customer_signs_in_successfully():
+    resp = client.post(
+        "/auth/google",
+        json={
+            "id_token": "test_google_token_existing_user",
+            "email": "newgoogleuser@example.com",
+            "full_name": "New Google Customer"
+        }
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "access_token" in data
+    assert data["user"]["email"] == "newgoogleuser@example.com"
+    assert data["user"]["role"] == "CUSTOMER"
+
+def test_google_auth_missing_or_unverified_token_rejected_with_401():
+    # Attempting to supply email/name without verified id_token must be rejected with 401
+    resp_no_token = client.post(
+        "/auth/google",
+        json={
+            "email": "unverified@example.com",
+            "full_name": "Unverified User",
+            "id_token": None
+        }
+    )
+    assert resp_no_token.status_code == 401
+    assert "valid Google ID token is required" in resp_no_token.json()["detail"]
+
+    # Invalid random token must be rejected with 401
+    resp_bad_token = client.post(
+        "/auth/google",
+        json={
+            "id_token": "definitely_invalid_google_token_xyz987654321",
+            "email": "hacker@example.com"
+        }
+    )
+    assert resp_bad_token.status_code == 401
+    assert "valid Google ID token is required" in resp_bad_token.json()["detail"]
+
+def test_google_auth_disabled_account_blocked():
+    db = TestingSessionLocal()
+    disabled_email = "disabledgoogle@example.com"
+    user = db.query(User).filter(User.email == disabled_email).first()
+    if not user:
+        user = User(
+            email=disabled_email,
+            hashed_password=get_password_hash("somepwd123"),
+            full_name="Disabled Google User",
+            role=UserRole.CUSTOMER,
+            is_active=False,
+            is_approved=True
+        )
+        db.add(user)
+        db.commit()
+    else:
+        user.is_active = False
+        db.commit()
+
+    resp = client.post(
+        "/auth/google",
+        json={
+            "id_token": "test_google_token_disabled",
+            "email": disabled_email,
+            "full_name": "Disabled Google User"
+        }
+    )
+    assert resp.status_code == 403
+    assert "disabled" in resp.json()["detail"].lower()
+    db.close()
+
+def test_google_auth_session_persistence_via_me():
+    resp = client.post(
+        "/auth/google",
+        json={
+            "id_token": "test_google_token_session_test",
+            "email": "sessiongoogle@example.com",
+            "full_name": "Session Google User"
+        }
+    )
+    assert resp.status_code == 200
+    token = resp.json()["access_token"]
+
+    # Verify token restores valid session via GET /auth/me
+    me_resp = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert me_resp.status_code == 200
+    assert me_resp.json()["email"] == "sessiongoogle@example.com"
+    assert me_resp.json()["role"] == "CUSTOMER"
+
 
 
 

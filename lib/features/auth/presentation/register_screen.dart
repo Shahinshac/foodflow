@@ -45,92 +45,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   void _handleGoogleSignIn() async {
-    final emailCtrl = TextEditingController();
-    final nameCtrl = TextEditingController();
-
-    final result = await showDialog<Map<String, String>>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Colors.red.shade50,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.g_mobiledata_rounded, color: Colors.red, size: 28),
-            ),
-            const SizedBox(width: 10),
-            const Text('Google Sign-In', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Sign in securely with your Google Account as a Customer:',
-              style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: nameCtrl,
-              decoration: InputDecoration(
-                labelText: 'Full Name',
-                hintText: 'e.g. Rahul Sharma',
-                prefixIcon: const Icon(Icons.person_outline),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: emailCtrl,
-              keyboardType: TextInputType.emailAddress,
-              decoration: InputDecoration(
-                labelText: 'Google Email',
-                hintText: 'user@gmail.com',
-                prefixIcon: const Icon(Icons.email_outlined),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.darkAction,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            onPressed: () {
-              if (emailCtrl.text.trim().isEmpty || !emailCtrl.text.contains('@')) {
-                return;
-              }
-              Navigator.pop(ctx, {
-                'email': emailCtrl.text.trim(),
-                'name': nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : emailCtrl.text.trim().split('@')[0],
-              });
-            },
-            child: const Text('Continue'),
-          ),
-        ],
-      ),
-    );
-
-    if (result != null && mounted) {
-      final success = await ref.read(authProvider.notifier).loginWithGoogle(
-        email: result['email'],
-        fullName: result['name'],
-      );
-      if (success && mounted) {
-        context.go('/');
-      }
+    final success = await ref.read(authProvider.notifier).signInWithGoogle();
+    if (success == true && mounted) {
+      context.go('/');
     }
   }
 
@@ -265,35 +182,83 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           return SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
+                physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 420),
                   child: Column(
                     children: [
+                      // Header Logo & Branding
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Container(
-                            padding: const EdgeInsets.all(8),
+                            padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: AppColors.primary,
-                              borderRadius: BorderRadius.circular(12),
+                              gradient: AppColors.warmHeroGradient,
+                              borderRadius: BorderRadius.circular(14),
+                              boxShadow: AppColors.primaryGlow,
                             ),
-                            child: const Icon(Icons.restaurant_menu_rounded, color: Colors.white, size: 22),
+                            child: const Icon(Icons.restaurant_menu_rounded, color: Colors.white, size: 24),
                           ),
-                          const SizedBox(width: 10),
-                          const Text(
-                            'FoodFlow',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.5,
+                          const SizedBox(width: 12),
+                          RichText(
+                            text: TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: 'Food',
+                                  style: TextStyle(
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.w900,
+                                    color: isDark ? Colors.white : const Color(0xFF111827),
+                                    letterSpacing: -0.5,
+                                  ),
+                                ),
+                                const TextSpan(
+                                  text: 'Flow',
+                                  style: TextStyle(
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.primary,
+                                    letterSpacing: -0.5,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Text(
+                          'CRAVE • ORDER • RELISH',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 24),
-                      _buildRegisterForm(authState, isDark, false),
+                      // Card Container
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: isDark ? AppColors.surfaceDark : Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: AppColors.softShadow,
+                          border: Border.all(
+                            color: isDark ? AppColors.borderDark : const Color(0xFFF1F5F9),
+                          ),
+                        ),
+                        child: _buildRegisterForm(authState, isDark, false),
+                      ),
                     ],
                   ),
                 ),
@@ -315,7 +280,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           Text(
             'Create Account',
             style: TextStyle(
-              fontSize: isDesktop ? 28 : 24,
+              fontSize: isDesktop ? 28 : 22,
               fontWeight: FontWeight.w900,
               letterSpacing: -0.5,
               color: isDark ? Colors.white : const Color(0xFF111827),
@@ -323,13 +288,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            'Join FoodFlow and start your journey',
+            'Join FoodFlow and start ordering fresh meals',
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 13,
               color: isDark ? Colors.white60 : const Color(0xFF6B7280),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Full Name
           TextFormField(
@@ -337,10 +302,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             decoration: InputDecoration(
               labelText: 'Full Name',
               hintText: 'John Doe',
-              prefixIcon: const Icon(Icons.person_outline_rounded, color: Color(0xFF9CA3AF)),
+              prefixIcon: const Icon(Icons.person_outline_rounded, color: Color(0xFF9CA3AF), size: 20),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: AppColors.primary, width: 2),
+              ),
               filled: true,
-              fillColor: isDark ? AppColors.surfaceDark : Colors.white,
+              fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8F9FD),
             ),
             validator: (v) => v == null || v.trim().isEmpty ? 'Full name is required' : null,
           ),
@@ -354,10 +327,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             decoration: InputDecoration(
               labelText: 'Email Address',
               hintText: 'name@example.com',
-              prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF9CA3AF)),
+              prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF9CA3AF), size: 20),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: AppColors.primary, width: 2),
+              ),
               filled: true,
-              fillColor: isDark ? AppColors.surfaceDark : Colors.white,
+              fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8F9FD),
             ),
             validator: (v) {
               if (v == null || v.trim().isEmpty) return 'Email is required';
@@ -375,10 +356,18 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             decoration: InputDecoration(
               labelText: 'Phone Number (Optional)',
               hintText: '9876543210',
-              prefixIcon: const Icon(Icons.phone_outlined, color: Color(0xFF9CA3AF)),
+              prefixIcon: const Icon(Icons.phone_outlined, color: Color(0xFF9CA3AF), size: 20),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: AppColors.primary, width: 2),
+              ),
               filled: true,
-              fillColor: isDark ? AppColors.surfaceDark : Colors.white,
+              fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8F9FD),
             ),
           ),
 
@@ -391,17 +380,26 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             decoration: InputDecoration(
               labelText: 'Password',
               hintText: '••••••••',
-              prefixIcon: const Icon(Icons.lock_outline_rounded, color: Color(0xFF9CA3AF)),
+              prefixIcon: const Icon(Icons.lock_outline_rounded, color: Color(0xFF9CA3AF), size: 20),
               suffixIcon: IconButton(
                 icon: Icon(
                   _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
                   color: const Color(0xFF9CA3AF),
+                  size: 20,
                 ),
                 onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
               ),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: AppColors.primary, width: 2),
+              ),
               filled: true,
-              fillColor: isDark ? AppColors.surfaceDark : Colors.white,
+              fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8F9FD),
             ),
             validator: (v) {
               if (v == null || v.isEmpty) return 'Password is required';
@@ -424,25 +422,33 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   const Icon(Icons.error_outline_rounded, color: AppColors.error, size: 20),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(authState.error!, style: const TextStyle(color: AppColors.error, fontSize: 13)),
+                    child: Text(
+                      authState.error!,
+                      style: const TextStyle(color: AppColors.error, fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ],
               ),
             ),
           ],
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Submit Button
-          SizedBox(
+          Container(
             width: double.infinity,
             height: 52,
+            decoration: BoxDecoration(
+              gradient: AppColors.primaryGradient,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: AppColors.primaryGlow,
+            ),
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.darkAction,
+                backgroundColor: Colors.transparent,
                 foregroundColor: Colors.white,
+                shadowColor: Colors.transparent,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                elevation: 0,
               ),
               onPressed: authState.isLoading ? null : _submit,
               child: authState.isLoading
@@ -451,7 +457,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       height: 24,
                       child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
                     )
-                  : const Text('Sign Up', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                  : const Text('Create Account', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
             ),
           ),
 
@@ -461,7 +467,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             children: [
               const Expanded(child: Divider(color: Color(0xFFE5E7EB))),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                padding: const EdgeInsets.symmetric(horizontal: 14.0),
                 child: Text(
                   'OR',
                   style: TextStyle(
@@ -475,26 +481,27 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             ],
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
 
           OutlinedButton.icon(
             style: OutlinedButton.styleFrom(
               foregroundColor: isDark ? Colors.white : const Color(0xFF1F2937),
-              side: const BorderSide(color: Color(0xFFE5E7EB)),
+              side: BorderSide(color: isDark ? AppColors.borderDark : const Color(0xFFE5E7EB)),
               minimumSize: const Size(double.infinity, 48),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             ),
-            icon: const Icon(Icons.g_mobiledata_rounded, size: 24, color: AppColors.primary),
-            label: const Text('Continue with Google', style: TextStyle(fontWeight: FontWeight.w700)),
+            icon: const Icon(Icons.g_mobiledata_rounded, size: 26, color: AppColors.primary),
+            label: const Text('Continue with Google', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
             onPressed: authState.isLoading ? null : _handleGoogleSignIn,
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Already have account
           Center(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            child: Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Text(
                   'Already have an account? ',
@@ -503,7 +510,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 InkWell(
                   onTap: () => context.go('/login'),
                   child: const Text(
-                    'Login',
+                    'Sign In',
                     style: TextStyle(
                       color: AppColors.primary,
                       fontWeight: FontWeight.bold,

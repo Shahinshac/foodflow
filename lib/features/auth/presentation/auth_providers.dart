@@ -163,6 +163,26 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  Future<bool?> signInWithGoogle() async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final user = await _repository.signInWithGoogle();
+      if (user == null) {
+        // User cancelled the Google account chooser flow
+        state = state.copyWith(isLoading: false);
+        return null;
+      }
+      state = AuthState(user: user, isLoading: false);
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        error: e.toString().replaceAll('Exception: ', ''),
+      );
+      return false;
+    }
+  }
+
   Future<void> logout() async {
     await _repository.logout();
     state = AuthState(user: null, isLoading: false);

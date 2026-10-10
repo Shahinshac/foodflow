@@ -18,12 +18,62 @@ import 'package:foodflow/core/widgets/pwa_install_guide_dialog.dart';
 import 'package:foodflow/features/auth/data/auth_repository.dart';
 import 'package:foodflow/features/admin/presentation/admin_dashboard_screen.dart';
 import 'package:foodflow/features/auth/presentation/rider_register_screen.dart';
+import 'dart:convert';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class MockAuthRepo extends AuthRepository {
   MockAuthRepo() : super(ApiClient());
   @override
   Future<UserModel?> getCurrentUser() async => null;
+
+  @override
+  Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(AppConstants.authTokenKey);
+    await prefs.remove(AppConstants.userKey);
+  }
+}
+
+class FakeGoogleAuthRepo extends AuthRepository {
+  final bool shouldCancel;
+  final UserModel? mockUser;
+  final String? throwError;
+  final VoidCallback? onSignInCalled;
+
+  FakeGoogleAuthRepo({
+    this.shouldCancel = false,
+    this.mockUser,
+    this.throwError,
+    this.onSignInCalled,
+  }) : super(ApiClient());
+
+  @override
+  Future<UserModel?> getCurrentUser() async => mockUser;
+
+  @override
+  Future<UserModel?> signInWithGoogle() async {
+    onSignInCalled?.call();
+    if (throwError != null) {
+      throw Exception(throwError);
+    }
+    if (shouldCancel) {
+      return null;
+    }
+    if (mockUser != null) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(AppConstants.authTokenKey, 'fake_google_jwt');
+      await prefs.setString(AppConstants.userKey, jsonEncode(mockUser!.toJson()));
+    }
+    return mockUser;
+  }
+
+  @override
+  Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(AppConstants.authTokenKey);
+    await prefs.remove(AppConstants.userKey);
+  }
 }
 
 class FakeAuthNotifier extends AuthNotifier {
@@ -45,6 +95,16 @@ void main() {
   setUpAll(() {
     GoogleFonts.config.allowRuntimeFetching = false;
     SharedPreferences.setMockInitialValues({});
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/google_sign_in'),
+      (MethodCall methodCall) async {
+        if (methodCall.method == 'init') return null;
+        if (methodCall.method == 'signOut' || methodCall.method == 'disconnect') return null;
+        if (methodCall.method == 'isSignedIn') return false;
+        if (methodCall.method == 'signInSilently') return null;
+        return null;
+      },
+    );
   });
 
   group('CurrencyFormatter Tests', () {
@@ -275,6 +335,16 @@ void main() {
           isAuthenticated: false,
           role: null,
           location: '/',
+          isWeb: true,
+        ),
+        '/splash',
+      );
+      expect(
+        computeAppRedirect(
+          isLoading: true,
+          isAuthenticated: false,
+          role: null,
+          location: '/splash',
           isWeb: true,
         ),
         isNull,
@@ -1043,7 +1113,11 @@ void main() {
         isApproved: true,
       );
 
-      final container = ProviderContainer();
+      final container = ProviderContainer(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(MockAuthRepo()),
+        ],
+      );
       final notifier = container.read(authProvider.notifier);
       notifier.state = AuthState(user: fakeUser, isLoading: false);
 
@@ -1193,5 +1267,359 @@ void main() {
       expect(find.text('Password is required'), findsOneWidget);
     });
   });
+
+  group('Startup Auth & Session Lifecycle Tests', () {
+    test('Fresh installation / launch with no saved session redirects to /login', () {
+      final redirect = computeAppRedirect(
+        isLoading: false,
+        isAuthenticated: false,
+        role: null,
+        location: '/splash',
+        isWeb: false,
+      );
+      expect(redirect, '/login');
+    });
+
+    test('Launch with valid saved session restores session and routes directly to role dashboard', () {
+      // Customer session
+      final custRedirect = computeAppRedirect(
+        isLoading: false,
+        isAuthenticated: true,
+        role: 'CUSTOMER',
+        location: '/splash',
+        isWeb: false,
+      );
+      expect(custRedirect, '/');
+
+      // Admin session on Web
+      final adminRedirect = computeAppRedirect(
+        isLoading: false,
+        isAuthenticated: true,
+        role: 'ADMIN',
+        location: '/splash',
+        isWeb: true,
+      );
+      expect(adminRedirect, '/admin');
+
+      // Owner session on Web
+      final ownerRedirect = computeAppRedirect(
+        isLoading: false,
+        isAuthenticated: true,
+        role: 'RESTAURANT_OWNER',
+        location: '/splash',
+        isWeb: true,
+      );
+      expect(ownerRedirect, '/owner');
+
+      // Delivery Partner session
+      final riderRedirect = computeAppRedirect(
+        isLoading: false,
+        isAuthenticated: true,
+        role: 'DELIVERY_PARTNER',
+        location: '/splash',
+        isWeb: false,
+      );
+      expect(riderRedirect, '/rider');
+    });
+
+    test('Expired or invalid session clears user and routes to /login', () async {
+      SharedPreferences.setMockInitialValues({
+        AppConstants.authTokenKey: 'expired_invalid_token',
+      });
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString(AppConstants.authTokenKey), 'expired_invalid_token');
+
+      // Simulate expired token detection clearing local preferences
+      await prefs.remove(AppConstants.authTokenKey);
+      await prefs.remove(AppConstants.userKey);
+
+      expect(prefs.getString(AppConstants.authTokenKey), isNull);
+      expect(prefs.getString(AppConstants.userKey), isNull);
+
+      final redirect = computeAppRedirect(
+        isLoading: false,
+        isAuthenticated: false,
+        role: null,
+        location: '/splash',
+        isWeb: false,
+      );
+      expect(redirect, '/login');
+    });
+
+    test('Logout clears session tokens and state, protecting private screens', () async {
+      SharedPreferences.setMockInitialValues({
+        AppConstants.authTokenKey: 'valid_token',
+        AppConstants.userKey: '{"id":1,"email":"cust@ff.com","role":"CUSTOMER"}',
+      });
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear();
+
+      final redirectFromHome = computeAppRedirect(
+        isLoading: false,
+        isAuthenticated: false,
+        role: null,
+        location: '/',
+        isWeb: false,
+      );
+      expect(redirectFromHome, '/login');
+
+      final redirectFromProfile = computeAppRedirect(
+        isLoading: false,
+        isAuthenticated: false,
+        role: null,
+        location: '/profile',
+        isWeb: false,
+      );
+      expect(redirectFromProfile, '/login');
+    });
+
+    test('Guest access is strictly disabled on customer home and detail screens', () {
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/',
+          isWeb: false,
+        ),
+        '/login',
+      );
+
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/restaurant/10',
+          isWeb: false,
+        ),
+        '/login',
+      );
+    });
+
+    test('Mobile app strictly denies unauthenticated access to admin and owner routes', () {
+      // Unauthenticated mobile visit to /admin or /owner redirects to /login
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/admin',
+          isWeb: false,
+        ),
+        '/login',
+      );
+
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/owner',
+          isWeb: false,
+        ),
+        '/login',
+      );
+
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/restaurant-login',
+          isWeb: false,
+        ),
+        '/login',
+      );
+    });
+
+    test('Mobile app enforces Customer and Rider separation without restaurant partner access', () {
+      // Mobile customer cannot access rider dashboard -> redirected to /
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: true,
+          role: 'CUSTOMER',
+          location: '/rider',
+          isWeb: false,
+        ),
+        '/',
+      );
+
+      // Mobile rider cannot access customer home -> redirected to /rider
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: true,
+          role: 'DELIVERY_PARTNER',
+          location: '/',
+          isWeb: false,
+        ),
+        '/rider',
+      );
+
+      // Mobile app denies admin and owner access
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: true,
+          role: 'ADMIN',
+          location: '/',
+          isWeb: false,
+        ),
+        '/login',
+      );
+
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: true,
+          role: 'RESTAURANT_OWNER',
+          location: '/',
+          isWeb: false,
+        ),
+        '/login',
+      );
+    });
+  });
+
+  group('Google Authentication Flow Tests', () {
+    test('Google Sign-In cancellation returns null and leaves user unauthenticated without error', () async {
+      final fakeRepo = FakeGoogleAuthRepo(shouldCancel: true);
+      final container = ProviderContainer(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(fakeRepo),
+        ],
+      );
+      final notifier = container.read(authProvider.notifier);
+
+      final result = await notifier.signInWithGoogle();
+
+      expect(result, isNull);
+      expect(container.read(authProvider).isAuthenticated, isFalse);
+      expect(container.read(authProvider).isLoading, isFalse);
+      expect(container.read(authProvider).error, isNull);
+    });
+
+    test('Google Sign-In with valid ID token authenticates customer and persists session', () async {
+      SharedPreferences.setMockInitialValues({});
+      final fakeUser = UserModel(
+        id: 42,
+        email: 'googlecustomer@gmail.com',
+        fullName: 'Google Customer',
+        role: 'CUSTOMER',
+        isApproved: true,
+      );
+      final fakeRepo = FakeGoogleAuthRepo(mockUser: fakeUser);
+      final container = ProviderContainer(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(fakeRepo),
+        ],
+      );
+      final notifier = container.read(authProvider.notifier);
+
+      final result = await notifier.signInWithGoogle();
+
+      expect(result, isTrue);
+      expect(container.read(authProvider).isAuthenticated, isTrue);
+      expect(container.read(authProvider).user?.email, 'googlecustomer@gmail.com');
+      expect(container.read(authProvider).user?.role, 'CUSTOMER');
+      expect(container.read(authProvider).isLoading, isFalse);
+      expect(container.read(authProvider).error, isNull);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString(AppConstants.authTokenKey), 'fake_google_jwt');
+      expect(prefs.getString(AppConstants.userKey), contains('googlecustomer@gmail.com'));
+    });
+
+    test('Google Sign-In with invalid ID token sets error in AuthState and returns false', () async {
+      final fakeRepo = FakeGoogleAuthRepo(
+        throwError: 'Unable to verify Google credentials. A valid Google ID token is required.',
+      );
+      final container = ProviderContainer(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(fakeRepo),
+        ],
+      );
+      final notifier = container.read(authProvider.notifier);
+
+      final result = await notifier.signInWithGoogle();
+
+      expect(result, isFalse);
+      expect(container.read(authProvider).isAuthenticated, isFalse);
+      expect(container.read(authProvider).isLoading, isFalse);
+      expect(container.read(authProvider).error, contains('Unable to verify Google credentials'));
+    });
+
+    test('Session persistence restores authenticated customer on subsequent launches', () async {
+      SharedPreferences.setMockInitialValues({
+        AppConstants.authTokenKey: 'persisted_google_token',
+        AppConstants.userKey: '{"id":42,"email":"persisted@gmail.com","full_name":"Persisted User","role":"CUSTOMER","is_approved":true}',
+      });
+
+      final fakeUser = UserModel(
+        id: 42,
+        email: 'persisted@gmail.com',
+        fullName: 'Persisted User',
+        role: 'CUSTOMER',
+        isApproved: true,
+      );
+      final fakeRepo = FakeGoogleAuthRepo(mockUser: fakeUser);
+
+      final container = ProviderContainer(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(fakeRepo),
+        ],
+      );
+      final notifier = container.read(authProvider.notifier);
+      await notifier.checkAuth();
+
+      expect(container.read(authProvider).isAuthenticated, isTrue);
+      expect(container.read(authProvider).user?.email, 'persisted@gmail.com');
+      expect(container.read(authProvider).user?.role, 'CUSTOMER');
+    });
+
+    testWidgets('Tapping Continue with Google triggers Google Sign-In directly without custom dialog', (tester) async {
+      tester.view.physicalSize = const Size(1200, 1600);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      bool googleSignInCalled = false;
+      final fakeRepo = FakeGoogleAuthRepo(
+        onSignInCalled: () {
+          googleSignInCalled = true;
+        },
+        shouldCancel: true,
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authRepositoryProvider.overrideWithValue(fakeRepo),
+          ],
+          child: const MaterialApp(
+            home: LoginScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Find the "Continue with Google" button
+      final googleBtn = find.widgetWithText(OutlinedButton, 'Continue with Google');
+      expect(googleBtn, findsOneWidget);
+
+      // Tap "Continue with Google"
+      await tester.tap(googleBtn);
+      await tester.pumpAndSettle();
+
+      // Verify no custom dialog requesting name/email appeared
+      expect(find.text('Sign in securely with your Google Account as a Customer:'), findsNothing);
+      expect(find.widgetWithText(TextField, 'Google Email'), findsNothing);
+      expect(googleSignInCalled, isTrue);
+    });
+  });
 }
+
 

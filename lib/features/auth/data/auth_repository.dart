@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/network/api_client.dart';
@@ -7,8 +9,17 @@ import '../../restaurant/domain/models.dart';
 
 class AuthRepository {
   final ApiClient apiClient;
+  final GoogleSignIn _googleSignIn;
 
-  AuthRepository(this.apiClient);
+  AuthRepository(
+    this.apiClient, {
+    GoogleSignIn? googleSignIn,
+  }) : _googleSignIn = googleSignIn ??
+            GoogleSignIn(
+              clientId: kIsWeb ? AppConstants.googleWebClientId : null,
+              serverClientId: AppConstants.googleWebClientId,
+              scopes: const ['email', 'profile'],
+            );
 
   Future<UserModel> login(String email, String password) async {
     try {
@@ -262,9 +273,57 @@ class AuthRepository {
     }
   }
 
+  Future<UserModel?> signInWithGoogle() async {
+    try {
+      final GoogleSignInAccount? account = await _googleSignIn.signIn();
+      if (account == null) {
+        // User cancelled the native Google account chooser
+        return null;
+      }
+
+      final GoogleSignInAuthentication auth = await account.authentication;
+      final String? idToken = auth.idToken;
+
+      if (idToken == null || idToken.isEmpty) {
+        throw Exception('Google Sign-In failed: Unable to obtain Google ID token.');
+      }
+
+      return await loginWithGoogle(
+        idToken: idToken,
+        email: account.email,
+        fullName: account.displayName,
+        avatarUrl: account.photoUrl,
+      );
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.receiveTimeout) {
+        throw Exception('Server connection timed out. Please check network.');
+      } else if (e.type == DioExceptionType.connectionError) {
+        throw Exception('Unable to reach server at ${AppConstants.baseUrl}. Check Wi-Fi.');
+      }
+      final detail = e.response?.data is Map ? e.response?.data['detail'] : null;
+      String message = 'Google sign in failed';
+      if (detail is String) {
+        message = detail;
+      }
+      throw Exception(message);
+    } catch (e) {
+      final errStr = e.toString().toLowerCase();
+      if (errStr.contains('sign_in_canceled') ||
+          errStr.contains('canceled') ||
+          errStr.contains('cancelled') ||
+          errStr.contains('12501')) {
+        return null;
+      }
+      throw Exception(e.toString().replaceAll('Exception: ', ''));
+    }
+  }
+
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(AppConstants.authTokenKey);
     await prefs.remove(AppConstants.userKey);
+    try {
+      await _googleSignIn.signOut().timeout(const Duration(milliseconds: 500));
+    } catch (_) {}
   }
 }

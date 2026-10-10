@@ -41,6 +41,7 @@ class ApiClient {
             try {
               final prefs = await SharedPreferences.getInstance();
               await prefs.remove(AppConstants.authTokenKey);
+              await prefs.remove(AppConstants.userKey);
             } catch (_) {}
           }
           return handler.next(e);

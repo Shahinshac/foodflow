@@ -97,92 +97,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   void _handleGoogleSignIn() async {
-    final emailCtrl = TextEditingController();
-    final nameCtrl = TextEditingController();
-
-    final result = await showDialog<Map<String, String>>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Colors.red.shade50,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.g_mobiledata_rounded, color: Colors.red, size: 28),
-            ),
-            const SizedBox(width: 10),
-            const Text('Google Sign-In', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Sign in securely with your Google Account as a Customer:',
-              style: TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: nameCtrl,
-              decoration: InputDecoration(
-                labelText: 'Full Name',
-                hintText: 'e.g. Rahul Sharma',
-                prefixIcon: const Icon(Icons.person_outline),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: emailCtrl,
-              keyboardType: TextInputType.emailAddress,
-              decoration: InputDecoration(
-                labelText: 'Google Email',
-                hintText: 'user@gmail.com',
-                prefixIcon: const Icon(Icons.email_outlined),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.darkAction,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            onPressed: () {
-              if (emailCtrl.text.trim().isEmpty || !emailCtrl.text.contains('@')) {
-                return;
-              }
-              Navigator.pop(ctx, {
-                'email': emailCtrl.text.trim(),
-                'name': nameCtrl.text.trim().isNotEmpty ? nameCtrl.text.trim() : emailCtrl.text.trim().split('@')[0],
-              });
-            },
-            child: const Text('Continue'),
-          ),
-        ],
-      ),
-    );
-
-    if (result != null && mounted) {
-      final success = await ref.read(authProvider.notifier).loginWithGoogle(
-        email: result['email'],
-        fullName: result['name'],
-      );
-      if (success && mounted) {
-        context.go('/');
-      }
+    final success = await ref.read(authProvider.notifier).signInWithGoogle();
+    if (success == true && mounted) {
+      context.go('/');
     }
   }
 
@@ -552,36 +469,83 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           return SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
+                physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 420),
                   child: Column(
                     children: [
-                      // Header Logo
+                      // Header Logo & Branding
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Container(
-                            padding: const EdgeInsets.all(8),
+                            padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: AppColors.primary,
-                              borderRadius: BorderRadius.circular(12),
+                              gradient: AppColors.warmHeroGradient,
+                              borderRadius: BorderRadius.circular(14),
+                              boxShadow: AppColors.primaryGlow,
                             ),
-                            child: const Icon(Icons.restaurant_menu_rounded, color: Colors.white, size: 22),
+                            child: const Icon(Icons.restaurant_menu_rounded, color: Colors.white, size: 24),
                           ),
-                          const SizedBox(width: 10),
-                          const Text(
-                            'FoodFlow',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.5,
+                          const SizedBox(width: 12),
+                          RichText(
+                            text: TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: 'Food',
+                                  style: TextStyle(
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.w900,
+                                    color: isDark ? Colors.white : const Color(0xFF111827),
+                                    letterSpacing: -0.5,
+                                  ),
+                                ),
+                                const TextSpan(
+                                  text: 'Flow',
+                                  style: TextStyle(
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.primary,
+                                    letterSpacing: -0.5,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          widget.forcedRole == 'DELIVERY_PARTNER' ? '🛵 DELIVERY FLEET' : 'FAST • FRESH • DELIVERED',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.primary,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 24),
-                      _buildLoginForm(authState, isDark, false),
+                      // Card Container
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: isDark ? AppColors.surfaceDark : Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: AppColors.softShadow,
+                          border: Border.all(
+                            color: isDark ? AppColors.borderDark : const Color(0xFFF1F5F9),
+                          ),
+                        ),
+                        child: _buildLoginForm(authState, isDark, false),
+                      ),
                     ],
                   ),
                 ),
@@ -601,7 +565,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final isRider = targetRole == 'DELIVERY_PARTNER';
 
     String titleText = 'Welcome Back';
-    String subtitleText = 'Login to continue your food journey';
+    String subtitleText = 'Sign in to order your favourite meals';
     if (isAdmin) {
       titleText = 'Admin Portal';
       subtitleText = 'Sign in with administrator credentials';
@@ -622,7 +586,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           Text(
             titleText,
             style: TextStyle(
-              fontSize: isDesktop ? 28 : 24,
+              fontSize: isDesktop ? 28 : 22,
               fontWeight: FontWeight.w900,
               letterSpacing: -0.5,
               color: isDark ? Colors.white : const Color(0xFF111827),
@@ -632,11 +596,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           Text(
             subtitleText,
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 13,
               color: isDark ? Colors.white60 : const Color(0xFF6B7280),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Email Input
           TextFormField(
@@ -645,10 +609,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             decoration: InputDecoration(
               labelText: 'Email Address',
               hintText: isAdmin ? 'admin@foodflow.com' : (isOwner ? 'owner@foodflow.com' : (isRider ? 'rider@foodflow.com' : 'name@example.com')),
-              prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF9CA3AF)),
+              prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF9CA3AF), size: 20),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: AppColors.primary, width: 2),
+              ),
               filled: true,
-              fillColor: isDark ? AppColors.surfaceDark : Colors.white,
+              fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8F9FD),
             ),
             validator: (v) {
               if (v == null || v.trim().isEmpty) return 'Email is required';
@@ -666,17 +638,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             decoration: InputDecoration(
               labelText: 'Password',
               hintText: '••••••••',
-              prefixIcon: const Icon(Icons.lock_outline_rounded, color: Color(0xFF9CA3AF)),
+              prefixIcon: const Icon(Icons.lock_outline_rounded, color: Color(0xFF9CA3AF), size: 20),
               suffixIcon: IconButton(
                 icon: Icon(
                   _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
                   color: const Color(0xFF9CA3AF),
+                  size: 20,
                 ),
                 onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
               ),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: isDark ? AppColors.borderDark : const Color(0xFFE2E8F0)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: AppColors.primary, width: 2),
+              ),
               filled: true,
-              fillColor: isDark ? AppColors.surfaceDark : Colors.white,
+              fillColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8F9FD),
             ),
             validator: (v) {
               if (v == null || v.isEmpty) return 'Password is required';
@@ -685,7 +666,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             },
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
 
           // Remember Me & Forgot Password
           Row(
@@ -693,12 +674,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             children: [
               Row(
                 children: [
-                  Checkbox(
-                    value: _rememberMe,
-                    activeColor: AppColors.darkAction,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                    onChanged: (val) => setState(() => _rememberMe = val ?? true),
+                  SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: Checkbox(
+                      value: _rememberMe,
+                      activeColor: AppColors.primary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                      onChanged: (val) => setState(() => _rememberMe = val ?? true),
+                    ),
                   ),
+                  const SizedBox(width: 8),
                   Text(
                     'Remember me',
                     style: TextStyle(
@@ -711,7 +697,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               TextButton(
                 onPressed: () {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Password reset link sent to email if registered.')),
+                    const SnackBar(
+                      content: Text('Password reset link sent to email if registered.'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
                   );
                 },
                 child: const Text(
@@ -727,7 +716,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
 
           if (authState.error != null) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -742,7 +731,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   Expanded(
                     child: Text(
                       authState.error!,
-                      style: const TextStyle(color: AppColors.error, fontSize: 13),
+                      style: const TextStyle(color: AppColors.error, fontSize: 13, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ],
@@ -753,15 +742,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           const SizedBox(height: 20),
 
           // Login Button
-          SizedBox(
+          Container(
             width: double.infinity,
             height: 52,
+            decoration: BoxDecoration(
+              gradient: isRider ? null : AppColors.primaryGradient,
+              color: isRider ? AppColors.darkAction : null,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: isRider ? null : AppColors.primaryGlow,
+            ),
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.darkAction,
+                backgroundColor: Colors.transparent,
                 foregroundColor: Colors.white,
+                shadowColor: Colors.transparent,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                elevation: 0,
               ),
               onPressed: authState.isLoading ? null : _submit,
               child: authState.isLoading
@@ -771,7 +766,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
                     )
                   : Text(
-                      isAdmin ? 'Sign In as Admin' : (isOwner ? 'Sign In as Owner' : (isRider ? 'Sign In as Rider' : 'Login')),
+                      isAdmin
+                          ? 'Sign In as Admin'
+                          : (isOwner
+                              ? 'Sign In as Owner'
+                              : (isRider ? 'Sign In as Rider' : 'Sign In to FoodFlow')),
                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
                     ),
             ),
@@ -783,7 +782,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               children: [
                 const Expanded(child: Divider(color: Color(0xFFE5E7EB))),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 14.0),
                   child: Text(
                     'OR',
                     style: TextStyle(
@@ -796,22 +795,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 const Expanded(child: Divider(color: Color(0xFFE5E7EB))),
               ],
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
             OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
                 foregroundColor: isDark ? Colors.white : const Color(0xFF1F2937),
-                side: const BorderSide(color: Color(0xFFE5E7EB)),
+                side: BorderSide(color: isDark ? AppColors.borderDark : const Color(0xFFE5E7EB)),
                 minimumSize: const Size(double.infinity, 48),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
-              icon: const Icon(Icons.g_mobiledata_rounded, size: 24, color: AppColors.primary),
-              label: const Text('Continue with Google', style: TextStyle(fontWeight: FontWeight.w700)),
+              icon: const Icon(Icons.g_mobiledata_rounded, size: 26, color: AppColors.primary),
+              label: const Text('Continue with Google', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
               onPressed: authState.isLoading ? null : _handleGoogleSignIn,
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
             Center(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              child: Wrap(
+                alignment: WrapAlignment.center,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Text(
                     "Don't have an account? ",
@@ -831,9 +831,37 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+            // Rider Entry Point for Mobile Customers
+            Center(
+              child: InkWell(
+                onTap: () => context.go('/rider'),
+                borderRadius: BorderRadius.circular(10),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  child: Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: const [
+                      Icon(Icons.two_wheeler_rounded, size: 16, color: Color(0xFF10B981)),
+                      SizedBox(width: 6),
+                      Text(
+                        'Delivering with FoodFlow? Rider Login',
+                        style: TextStyle(
+                          color: Color(0xFF059669),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ],
 
-          if (isOwner) ...[
+          // Web-Only Restaurant Owner Registration
+          if (kIsWeb && isOwner) ...[
             const SizedBox(height: 24),
             Center(
               child: InkWell(
@@ -858,7 +886,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ],
 
           if (isRider) ...[
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
             Center(
               child: InkWell(
                 onTap: () => context.go('/rider/register'),
@@ -866,7 +894,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                   decoration: BoxDecoration(
                     color: const Color(0xFF10B981).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
                   ),
                   child: Row(
@@ -883,6 +911,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                       ),
                     ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Center(
+              child: InkWell(
+                onTap: () => context.go('/login'),
+                child: const Text(
+                  'Customer? Switch to Food Ordering',
+                  style: TextStyle(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
                   ),
                 ),
               ),
