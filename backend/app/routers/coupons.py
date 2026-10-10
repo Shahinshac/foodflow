@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -29,7 +29,7 @@ def validate_coupon_logic(
         return False, 0, "This coupon is currently inactive", coupon
 
     now = datetime.utcnow()
-    if coupon.start_date and now < coupon.start_date:
+    if coupon.start_date and now < (coupon.start_date - timedelta(minutes=1)):
         return False, 0, f"Coupon starts on {coupon.start_date.strftime('%d %b %Y')}", coupon
 
     if coupon.end_date and now > coupon.end_date:
@@ -161,6 +161,50 @@ def get_available_coupons(
         ).count()
 
         if user_usages < c.per_user_limit and c.used_count < c.usage_limit:
+            rest_name = c.restaurant.name if c.restaurant else "All Restaurants"
+            results.append(CouponResponse(
+                id=c.id,
+                code=c.code,
+                title=c.title or f"{c.code} Offer",
+                description=c.description or f"Get {c.discount_value}% OFF on orders above ₹{c.min_order_paise // 100}",
+                discount_type=c.discount_type,
+                discount_value=c.discount_value,
+                min_order_paise=c.min_order_paise,
+                max_discount_paise=c.max_discount_paise,
+                usage_limit=c.usage_limit,
+                used_count=c.used_count,
+                per_user_limit=c.per_user_limit,
+                first_order_only=c.first_order_only,
+                is_active=c.is_active,
+                restaurant_id=c.restaurant_id,
+                restaurant_name=rest_name,
+                start_date=c.start_date,
+                end_date=c.end_date,
+                created_at=c.created_at,
+                is_expired=False
+            ))
+    return results
+
+@router.get("/public", response_model=List[CouponResponse])
+def get_public_active_coupons(
+    restaurant_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db)
+):
+    now = datetime.utcnow()
+    query = db.query(Coupon).filter(
+        Coupon.is_active == True,
+        (Coupon.end_date == None) | (Coupon.end_date >= now)
+    )
+
+    if restaurant_id:
+        query = query.filter(
+            (Coupon.restaurant_id == None) | (Coupon.restaurant_id == restaurant_id)
+        )
+
+    coupons = query.all()
+    results = []
+    for c in coupons:
+        if c.used_count < c.usage_limit:
             rest_name = c.restaurant.name if c.restaurant else "All Restaurants"
             results.append(CouponResponse(
                 id=c.id,

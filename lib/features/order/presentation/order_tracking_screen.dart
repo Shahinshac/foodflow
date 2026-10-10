@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'order_providers.dart';
 import '../../auth/presentation/auth_providers.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/currency_formatter.dart';
+import '../../../core/widgets/error_and_empty_views.dart';
 
 class OrderTrackingScreen extends ConsumerWidget {
   final int orderId;
@@ -44,7 +47,10 @@ class OrderTrackingScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: orderAsync.when(
+      body: RefreshIndicator(
+        onRefresh: () async => ref.refresh(orderDetailProvider(orderId)),
+        color: AppColors.primary,
+        child: orderAsync.when(
         data: (order) {
           final currentStepIndex = statusSteps.indexOf(order.status);
 
@@ -188,8 +194,12 @@ class OrderTrackingScreen extends ConsumerWidget {
             ),
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, stack) => Center(child: Text('Error: $err')),
+          loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+          error: (err, stack) => CustomErrorView(
+            message: 'Failed to track order: ${ApiClient.formatError(err)}',
+            onRetry: () => ref.refresh(orderDetailProvider(orderId)),
+          ),
+        ),
       ),
     );
   }

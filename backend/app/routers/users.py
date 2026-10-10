@@ -11,7 +11,9 @@ router = APIRouter(prefix="/users", tags=["User Profile, Addresses & Favorites"]
 
 @router.get("/addresses", response_model=List[AddressResponse])
 def get_user_addresses(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    return db.query(UserAddress).filter(UserAddress.user_id == current_user.id).all()
+    return db.query(UserAddress).filter(
+        UserAddress.user_id == current_user.id
+    ).order_by(UserAddress.is_default.desc(), UserAddress.id.desc()).all()
 
 @router.post("/addresses", response_model=AddressResponse)
 def add_user_address(
@@ -19,21 +21,24 @@ def add_user_address(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    if addr_in.is_default:
+    existing_count = db.query(UserAddress).filter(UserAddress.user_id == current_user.id).count()
+    make_default = bool(addr_in.is_default or existing_count == 0)
+
+    if make_default:
         db.query(UserAddress).filter(UserAddress.user_id == current_user.id).update({"is_default": False})
 
     new_addr = UserAddress(
         user_id=current_user.id,
-        label=addr_in.label,
-        street_address=addr_in.street_address,
+        label=addr_in.label.upper().strip() if addr_in.label else "HOME",
+        street_address=addr_in.street_address.strip(),
         building_floor=addr_in.building_floor,
         landmark=addr_in.landmark,
-        city=addr_in.city,
+        city=addr_in.city.strip() if addr_in.city else "City",
         state=addr_in.state,
-        pincode=addr_in.pincode,
+        pincode=addr_in.pincode.strip() if addr_in.pincode else "",
         latitude=addr_in.latitude or 12.9716,
         longitude=addr_in.longitude or 77.5946,
-        is_default=addr_in.is_default or len(current_user.addresses) == 0
+        is_default=make_default
     )
     db.add(new_addr)
     db.commit()
@@ -52,8 +57,19 @@ def delete_user_address(
     ).first()
     if not addr:
         raise HTTPException(status_code=404, detail="Address not found")
+    
+    was_default = addr.is_default
     db.delete(addr)
     db.commit()
+
+    if was_default:
+        remaining = db.query(UserAddress).filter(
+            UserAddress.user_id == current_user.id
+        ).order_by(UserAddress.id.desc()).first()
+        if remaining:
+            remaining.is_default = True
+            db.commit()
+
     return {"message": "Address deleted"}
 
 # Favorites Management

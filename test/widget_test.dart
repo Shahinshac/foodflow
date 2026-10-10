@@ -1,9 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:foodflow/core/theme/app_colors.dart';
 import 'package:foodflow/core/theme/app_theme.dart';
 
 void main() {
+  setUpAll(() {
+    GoogleFonts.config.allowRuntimeFetching = false;
+  });
   testWidgets('AppTheme defines consistent primary branding and color scheme', (WidgetTester tester) async {
     expect(AppColors.primary, const Color(0xFFFF521B));
     expect(AppColors.primaryDark, const Color(0xFFE03E0B));

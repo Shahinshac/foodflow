@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/currency_formatter.dart';
+import '../../../core/widgets/error_and_empty_views.dart';
+import '../../../core/widgets/motion_system.dart';
 import 'order_providers.dart';
 
 class OrdersListScreen extends ConsumerWidget {
@@ -337,19 +340,15 @@ class OrdersListScreen extends ConsumerWidget {
               },
             );
           },
-          loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-          error: (err, stack) => Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text('Error loading orders: $err'),
-                const SizedBox(height: 12),
-                ElevatedButton(
-                  onPressed: () => ref.invalidate(userOrdersProvider),
-                  child: const Text('Retry'),
-                ),
-              ],
-            ),
+          loading: () => ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: 3,
+            separatorBuilder: (_, _) => const SizedBox(height: 16),
+            itemBuilder: (_, _) => const FoodShimmerLoading(width: double.infinity, height: 180),
+          ),
+          error: (err, stack) => CustomErrorView(
+            message: 'Failed to load your orders: ${ApiClient.formatError(err)}',
+            onRetry: () => ref.invalidate(userOrdersProvider),
           ),
         ),
       ),

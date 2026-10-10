@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../../core/widgets/motion_system.dart';
 import '../../../core/network/upload_providers.dart';
 import 'auth_providers.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({super.key});
+  final String? forcedRole; // 'CUSTOMER', 'ADMIN', 'RESTAURANT_OWNER', 'DELIVERY_PARTNER'
+
+  const LoginScreen({super.key, this.forcedRole});
 
   @override
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
@@ -20,6 +22,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _rememberMe = true;
 
   @override
   void dispose() {
@@ -37,12 +40,55 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           );
       if (success && mounted) {
         final role = ref.read(authProvider).user?.role ?? 'CUSTOMER';
+        if (!kIsWeb && (role == 'ADMIN' || role == 'RESTAURANT_OWNER')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Admin and Restaurant Owner portals are accessible via the Web platform.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+          ref.read(authProvider.notifier).logout();
+          return;
+        }
+
+        final targetRole = widget.forcedRole ?? 'CUSTOMER';
+        if (targetRole == 'ADMIN' && role != 'ADMIN') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Access denied. Administrator privileges required.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+          ref.read(authProvider.notifier).logout();
+          return;
+        }
+        if (targetRole == 'RESTAURANT_OWNER' && role != 'RESTAURANT_OWNER') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Access denied. Restaurant Owner account required.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+          ref.read(authProvider.notifier).logout();
+          return;
+        }
+        if (targetRole == 'DELIVERY_PARTNER' && role != 'DELIVERY_PARTNER') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Access denied. Delivery Rider account required.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+          ref.read(authProvider.notifier).logout();
+          return;
+        }
+
         if (role == 'RESTAURANT_OWNER') {
-          context.go('/owner-dashboard');
+          context.go('/owner');
         } else if (role == 'DELIVERY_PARTNER') {
-          context.go('/delivery-dashboard');
+          context.go('/rider');
         } else if (role == 'ADMIN') {
-          context.go('/admin-dashboard');
+          context.go('/admin');
         } else {
           context.go('/');
         }
@@ -98,119 +144,104 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ],
                   ),
                   const SizedBox(height: 6),
-                  Text(
-                    'Create your restaurant owner account & submit your hotel details for Super Admin review.',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('1. OWNER ACCOUNT DETAILS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary)),
-                  const SizedBox(height: 10),
+                  const Text('Register your restaurant with FoodFlow for admin review.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  const Divider(height: 24),
+                  const Text('OWNER ACCOUNT', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primary, letterSpacing: 0.8)),
+                  const SizedBox(height: 8),
                   TextFormField(
                     controller: nameCtrl,
-                    decoration: const InputDecoration(labelText: 'Your Full Name', hintText: 'e.g. John Doe'),
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Name required' : null,
+                    decoration: const InputDecoration(labelText: 'Full Name *', prefixIcon: Icon(Icons.person_outline)),
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: emailCtrl,
+                    decoration: const InputDecoration(labelText: 'Email Address *', prefixIcon: Icon(Icons.email_outlined)),
                     keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(labelText: 'Email Address', hintText: 'e.g. owner@restaurant.com'),
                     validator: (v) => v == null || !v.contains('@') ? 'Valid email required' : null,
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: passCtrl,
-                          obscureText: true,
-                          decoration: const InputDecoration(labelText: 'Password', hintText: 'Min 6 chars'),
-                          validator: (v) => v == null || v.length < 6 ? 'Min 6 chars' : null,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: phoneCtrl,
-                          keyboardType: TextInputType.phone,
-                          decoration: const InputDecoration(labelText: 'Phone Number', hintText: '9876543210'),
-                        ),
-                      ),
-                    ],
+                  TextFormField(
+                    controller: passCtrl,
+                    decoration: const InputDecoration(labelText: 'Password *', prefixIcon: Icon(Icons.lock_outline)),
+                    obscureText: true,
+                    validator: (v) => v == null || v.length < 6 ? 'Min 6 characters' : null,
                   ),
-                  const SizedBox(height: 20),
-                  const Text('2. RESTAURANT PROFILE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primary)),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: phoneCtrl,
+                    decoration: const InputDecoration(labelText: 'Phone Number', prefixIcon: Icon(Icons.phone_outlined)),
+                  ),
+                  const Divider(height: 32),
+                  const Text('RESTAURANT DETAILS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.primary, letterSpacing: 0.8)),
+                  const SizedBox(height: 8),
                   TextFormField(
                     controller: restNameCtrl,
-                    decoration: const InputDecoration(labelText: 'Restaurant / Hotel Name', hintText: 'e.g. Royal Biryani Feast'),
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Restaurant name required' : null,
+                    decoration: const InputDecoration(labelText: 'Restaurant Name *', prefixIcon: Icon(Icons.storefront_outlined)),
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: cuisineCtrl,
-                    decoration: const InputDecoration(labelText: 'Cuisines Offered', hintText: 'e.g. Biryani, North Indian, Kebabs'),
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Cuisines required' : null,
+                    decoration: const InputDecoration(labelText: 'Cuisine (e.g. North Indian, Biryani) *', prefixIcon: Icon(Icons.restaurant_outlined)),
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: addressCtrl,
-                    decoration: const InputDecoration(labelText: 'Full Address / Location', hintText: 'e.g. Shop 12, Food Street, Bangalore'),
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Address required' : null,
+                    decoration: const InputDecoration(labelText: 'Full Address *', prefixIcon: Icon(Icons.location_on_outlined)),
+                    validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: descCtrl,
-                    decoration: const InputDecoration(labelText: 'Short Description', hintText: 'e.g. Authentic aromatic clay pot biryani'),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: delFeeCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'Delivery Fee (₹)', prefixText: '₹ '),
-                          validator: (v) => v == null || double.tryParse(v) == null ? 'Fee required' : null,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextFormField(
-                          controller: minOrderCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(labelText: 'Min Order (₹)', prefixText: '₹ '),
-                          validator: (v) => v == null || double.tryParse(v) == null ? 'Min order required' : null,
-                        ),
-                      ),
-                    ],
+                    decoration: const InputDecoration(labelText: 'Bio / Description', prefixIcon: Icon(Icons.notes_outlined)),
+                    maxLines: 2,
                   ),
                   const SizedBox(height: 16),
+                  // Cover Image Picker
                   Row(
                     children: [
-                      OutlinedButton.icon(
-                        icon: isUploading
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.add_a_photo_outlined),
-                        label: Text(uploadedImageUrl != null ? 'Cover Photo Attached' : 'Attach Cover Photo'),
+                      Container(
+                        width: 70,
+                        height: 70,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: uploadedImageUrl != null
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.network(uploadedImageUrl!, fit: BoxFit.cover),
+                              )
+                            : (isUploading
+                                ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                                : const Icon(Icons.image_outlined, color: Colors.grey)),
+                      ),
+                      const SizedBox(width: 14),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.upload_file, size: 18),
+                        label: Text(uploadedImageUrl != null ? 'Change Photo' : 'Upload Cover'),
+                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.darkAction, foregroundColor: Colors.white),
                         onPressed: isUploading
                             ? null
                             : () async {
                                 final picker = ImagePicker();
-                                final img = await picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
-                                if (img != null) {
+                                final file = await picker.pickImage(source: ImageSource.gallery, imageQuality: 75);
+                                if (file != null) {
                                   setModalState(() => isUploading = true);
                                   try {
-                                    final uploadRepo = ref.read(uploadRepositoryProvider);
-                                    final url = await uploadRepo.uploadImage(img);
+                                    final uploader = ref.read(uploadRepositoryProvider);
+                                    final url = await uploader.uploadImage(file);
                                     setModalState(() {
                                       uploadedImageUrl = url;
                                       isUploading = false;
                                     });
                                   } catch (e) {
                                     setModalState(() => isUploading = false);
-                                    if (ctx.mounted) {
-                                      ScaffoldMessenger.of(ctx).showSnackBar(
+                                    if (modalCtx.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
                                         SnackBar(content: Text('Upload failed: $e'), backgroundColor: AppColors.error),
                                       );
                                     }
@@ -225,10 +256,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     width: double.infinity,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
+                        backgroundColor: AppColors.darkAction,
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       ),
                       onPressed: isSubmitting
                           ? null
@@ -236,51 +267,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               if (formKey.currentState!.validate()) {
                                 setModalState(() => isSubmitting = true);
                                 try {
-                                  final delFeePaise = (double.parse(delFeeCtrl.text.trim()) * 100).toInt();
-                                  final minOrderPaise = (double.parse(minOrderCtrl.text.trim()) * 100).toInt();
+                                  final authNotifier = ref.read(authProvider.notifier);
+                                  final success = await authNotifier.registerOwner(
+                                    fullName: nameCtrl.text.trim(),
+                                    email: emailCtrl.text.trim(),
+                                    password: passCtrl.text,
+                                    phone: phoneCtrl.text.trim().isEmpty ? null : phoneCtrl.text.trim(),
+                                    restaurantName: restNameCtrl.text.trim(),
+                                    cuisine: cuisineCtrl.text.trim(),
+                                    addressText: addressCtrl.text.trim(),
+                                    description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
+                                    deliveryFeePaise: (int.tryParse(delFeeCtrl.text.trim()) ?? 30) * 100,
+                                    minOrderPaise: (int.tryParse(minOrderCtrl.text.trim()) ?? 100) * 100,
+                                    estimatedDeliveryTime: estTimeCtrl.text.trim(),
+                                    imageUrl: uploadedImageUrl,
+                                  );
 
-                                  final success = await ref.read(authProvider.notifier).registerOwner(
-                                        email: emailCtrl.text.trim(),
-                                        password: passCtrl.text,
-                                        fullName: nameCtrl.text.trim(),
-                                        phone: phoneCtrl.text.trim().isNotEmpty ? phoneCtrl.text.trim() : null,
-                                        restaurantName: restNameCtrl.text.trim(),
-                                        cuisine: cuisineCtrl.text.trim(),
-                                        description: descCtrl.text.trim().isNotEmpty ? descCtrl.text.trim() : null,
-                                        addressText: addressCtrl.text.trim(),
-                                        imageUrl: uploadedImageUrl,
-                                        deliveryFeePaise: delFeePaise,
-                                        minOrderPaise: minOrderPaise,
-                                        estimatedDeliveryTime: estTimeCtrl.text.trim(),
-                                      );
-
-                                  if (ctx.mounted) {
+                                  if (success && modalCtx.mounted) {
                                     Navigator.pop(ctx);
-                                  }
-
-                                  if (!mounted) return;
-                                  if (success) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Restaurant application submitted! Welcome to FoodFlow Partner.'),
-                                        backgroundColor: AppColors.veg,
-                                      ),
-                                    );
                                     context.go('/owner-dashboard');
                                   }
                                 } catch (e) {
-                                  setModalState(() => isSubmitting = false);
-                                  if (ctx.mounted) {
-                                    ScaffoldMessenger.of(ctx).showSnackBar(
+                                  if (modalCtx.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(content: Text('Registration failed: $e'), backgroundColor: AppColors.error),
                                     );
                                   }
+                                } finally {
+                                  if (modalCtx.mounted) setModalState(() => isSubmitting = false);
                                 }
                               }
                             },
                       child: isSubmitting
-                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : const Text('Submit Application for Review', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text('Submit Application', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     ),
                   ),
                 ],
@@ -295,323 +315,496 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
-    final topPadding = MediaQuery.paddingOf(context).top;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? AppColors.backgroundDark : Colors.white,
-      body: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
-        child: Column(
-          children: [
-            // Responsive Hero Header Banner
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.fromLTRB(24, topPadding + 24, 24, 36),
-              decoration: const BoxDecoration(
-                gradient: AppColors.warmHeroGradient,
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(32),
-                  bottomRight: Radius.circular(32),
-                ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.12),
-                          blurRadius: 16,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
+      backgroundColor: isDark ? AppColors.backgroundDark : const Color(0xFFFBF9F5),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isDesktop = constraints.maxWidth >= 900;
+
+          if (isDesktop) {
+            // DESKTOP SPLIT SCREEN (Reference Image 2)
+            return Row(
+              children: [
+                // Left Hero Column (45%)
+                Expanded(
+                  flex: 45,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF13221C), // Deep forest dark branding
                     ),
-                    child: const Icon(
-                      Icons.delivery_dining_rounded,
-                      size: 44,
-                      color: AppColors.primary,
-                    ),
-                  ).animate().scale(duration: 500.ms, curve: Curves.easeOutBack),
-                  const SizedBox(height: 14),
-                  const Text(
-                    'FoodFlow',
-                    style: TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                      letterSpacing: -0.5,
-                    ),
-                  ).animate().fadeIn(delay: 100.ms).slideY(begin: -0.2),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Fresh & delicious meals delivered in minutes',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white.withValues(alpha: 0.92),
-                    ),
-                  ).animate().fadeIn(delay: 200.ms),
-                ],
-              ),
-            ),
-
-            // Form Section
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'Welcome Back',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        color: isDark ? AppColors.textPrimaryDark : Colors.grey.shade900,
-                        letterSpacing: -0.5,
-                      ),
-                    ).animate().fadeIn(delay: 250.ms),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Sign in with your registered email and password to continue.',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: isDark ? AppColors.textSecondaryDark : Colors.grey.shade600,
-                      ),
-                    ).animate().fadeIn(delay: 300.ms),
-                    const SizedBox(height: 20),
-
-                    // Error Message Banner
-                    if (authState.error != null) ...[
-                      Container(
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: Colors.red.shade50,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.red.shade200),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.error_outline_rounded, color: Colors.red.shade700, size: 22),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                authState.error!,
-                                style: TextStyle(
-                                  color: Colors.red.shade800,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ).animate().fadeIn().shake(duration: 400.ms),
-                      const SizedBox(height: 18),
-                    ],
-
-                    // Email Field
-                    TextFormField(
-                      controller: _emailController,
-                      decoration: InputDecoration(
-                        labelText: 'Email Address or Username',
-                        hintText: 'e.g. customer@foodflow.com',
-                        prefixIcon: const Icon(Icons.email_outlined, color: AppColors.primary),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.next,
-                      validator: (val) {
-                        if (val == null || val.trim().isEmpty) {
-                          return 'Please enter your email or username';
-                        }
-                        return null;
-                      },
-                    ).animate().fadeIn(delay: 350.ms).slideX(begin: -0.05),
-                    const SizedBox(height: 16),
-
-                    // Password Field
-                    TextFormField(
-                      controller: _passwordController,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        hintText: 'Enter your password',
-                        prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppColors.primary),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                            color: Colors.grey.shade600,
-                          ),
-                          onPressed: () {
-                            setState(() {
-                              _obscurePassword = !_obscurePassword;
-                            });
-                          },
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      obscureText: _obscurePassword,
-                      textInputAction: TextInputAction.done,
-                      onFieldSubmitted: (_) => _submit(),
-                      validator: (val) {
-                        if (val == null || val.isEmpty) {
-                          return 'Please enter your password';
-                        }
-                        return null;
-                      },
-                    ).animate().fadeIn(delay: 400.ms).slideX(begin: -0.05),
-                    const SizedBox(height: 24),
-
-                    // Sign In Button
-                    ScaleTap(
-                      onTap: authState.isLoading ? null : _submit,
-                      child: Container(
-                        width: double.infinity,
-                        height: 54,
-                        decoration: BoxDecoration(
-                          gradient: AppColors.primaryGradient,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: AppColors.primaryGlow,
-                        ),
-                        child: Center(
-                          child: authState.isLoading
-                              ? const SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.5,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                  ),
-                                )
-                              : const Text(
-                                  'Sign In',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 0.3,
-                                  ),
-                                ),
-                        ),
-                      ),
-                    ).animate().fadeIn(delay: 450.ms).scale(begin: const Offset(0.95, 0.95)),
-                    const SizedBox(height: 20),
-
-                    // Register Link
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    child: Stack(
+                      fit: StackFit.expand,
                       children: [
-                        Text(
-                          "Don't have an account? ",
-                          style: TextStyle(
-                            color: isDark ? AppColors.textSecondaryDark : Colors.grey.shade600,
-                            fontSize: 14,
-                          ),
+                        // Background Dish Photo
+                        CachedNetworkImage(
+                          imageUrl: 'https://images.unsplash.com/photo-1589302168068-964664d93dc0?w=1000&q=80',
+                          fit: BoxFit.cover,
+                          placeholder: (_, __) => Container(color: const Color(0xFF13221C)),
+                          errorWidget: (_, __, ___) => Container(color: const Color(0xFF13221C)),
                         ),
-                        GestureDetector(
-                          onTap: () => context.push('/register'),
-                          child: const Text(
-                            'Sign Up',
-                            style: TextStyle(
-                              color: AppColors.primary,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 14,
+                        // Dark Gradient Overlay
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                const Color(0xFF13221C).withValues(alpha: 0.8),
+                                const Color(0xFF13221C).withValues(alpha: 0.95),
+                              ],
                             ),
                           ),
                         ),
-                      ],
-                    ).animate().fadeIn(delay: 500.ms),
-                    const SizedBox(height: 24),
-
-                    // Partner Registration Divider
-                    Row(
-                      children: [
-                        Expanded(child: Divider(color: Colors.grey.shade300)),
+                        // Brand Content
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          child: Text(
-                            'RESTAURANT PARTNERS',
-                            style: TextStyle(
-                              color: Colors.grey.shade500,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 1.2,
-                            ),
-                          ),
-                        ),
-                        Expanded(child: Divider(color: Colors.grey.shade300)),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Partner with Us Banner / Button
-                    InkWell(
-                      onTap: _showOwnerRegistrationDialog,
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: const BoxDecoration(
-                                color: AppColors.primary,
-                                shape: BoxShape.circle,
+                          padding: const EdgeInsets.all(48.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              // Logo
+                              InkWell(
+                                onTap: () => context.go('/'),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: const Icon(Icons.restaurant_menu_rounded, color: Colors.white, size: 22),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    const Text(
+                                      'FoodFlow',
+                                      style: TextStyle(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.w900,
+                                        color: Colors.white,
+                                        letterSpacing: -0.5,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                              child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 20),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
+
+                              // Main Message
+                              Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Text(
-                                    'Register Your Restaurant',
+                                    'Good Food\nBetter Days',
                                     style: TextStyle(
-                                      color: AppColors.primary,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
+                                      fontSize: 42,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.white,
+                                      height: 1.15,
+                                      letterSpacing: -1.0,
                                     ),
                                   ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Partner with FoodFlow & grow your business',
+                                  const SizedBox(height: 16),
+                                  const Text(
+                                    'Fresh meals from your favourite restaurants, delivered to your doorstep.',
                                     style: TextStyle(
-                                      color: isDark ? AppColors.textSecondaryDark : Colors.grey.shade600,
-                                      fontSize: 12,
+                                      fontSize: 16,
+                                      color: Colors.white70,
+                                      height: 1.5,
                                     ),
                                   ),
+                                  const SizedBox(height: 32),
+                                  _HeroFeatureItem(icon: Icons.dinner_dining_rounded, label: 'Wide variety of cuisines'),
+                                  const SizedBox(height: 12),
+                                  _HeroFeatureItem(icon: Icons.local_offer_rounded, label: 'Great offers and deals'),
+                                  const SizedBox(height: 12),
+                                  _HeroFeatureItem(icon: Icons.bolt_rounded, label: 'Fast and reliable delivery'),
                                 ],
                               ),
-                            ),
-                            const Icon(Icons.chevron_right_rounded, color: AppColors.primary),
-                          ],
+
+                              // Bottom Guest Link
+                              InkWell(
+                                onTap: () => context.go('/'),
+                                child: Row(
+                                  children: const [
+                                    Icon(Icons.arrow_back_rounded, color: Colors.white70, size: 16),
+                                    SizedBox(width: 8),
+                                    Text('Continue as Guest', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                // Right Login Form Column (55%)
+                Expanded(
+                  flex: 55,
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 32),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 440),
+                        child: _buildLoginForm(authState, isDark, true),
                       ),
-                    ).animate().fadeIn(delay: 550.ms),
-                  ],
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
+
+          // MOBILE LAYOUT
+          return SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Column(
+                    children: [
+                      // Header Logo
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(Icons.restaurant_menu_rounded, color: Colors.white, size: 22),
+                          ),
+                          const SizedBox(width: 10),
+                          const Text(
+                            'FoodFlow',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      _buildLoginForm(authState, isDark, false),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildLoginForm(AuthState authState, bool isDark, bool isDesktop) {
+    final targetRole = widget.forcedRole ?? 'CUSTOMER';
+    final isCustomer = targetRole == 'CUSTOMER';
+    final isAdmin = targetRole == 'ADMIN';
+    final isOwner = targetRole == 'RESTAURANT_OWNER';
+    final isRider = targetRole == 'DELIVERY_PARTNER';
+
+    String titleText = 'Welcome Back';
+    String subtitleText = 'Login to continue your food journey';
+    if (isAdmin) {
+      titleText = 'Admin Portal';
+      subtitleText = 'Sign in with administrator credentials';
+    } else if (isOwner) {
+      titleText = 'Restaurant Partner Login';
+      subtitleText = 'Manage your menu, live orders, and store operations';
+    } else if (isRider) {
+      titleText = 'Delivery Rider Login';
+      subtitleText = 'Access delivery assignments and rider earnings';
+    }
+
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            titleText,
+            style: TextStyle(
+              fontSize: isDesktop ? 28 : 24,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.5,
+              color: isDark ? Colors.white : const Color(0xFF111827),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitleText,
+            style: TextStyle(
+              fontSize: 14,
+              color: isDark ? Colors.white60 : const Color(0xFF6B7280),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Email Input
+          TextFormField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            decoration: InputDecoration(
+              labelText: 'Email Address',
+              hintText: isAdmin ? 'admin@foodflow.com' : (isOwner ? 'owner@foodflow.com' : (isRider ? 'rider@foodflow.com' : 'name@example.com')),
+              prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF9CA3AF)),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+              filled: true,
+              fillColor: isDark ? AppColors.surfaceDark : Colors.white,
+            ),
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) return 'Email is required';
+              if (!v.contains('@')) return 'Enter a valid email address';
+              return null;
+            },
+          ),
+
+          const SizedBox(height: 16),
+
+          // Password Input
+          TextFormField(
+            controller: _passwordController,
+            obscureText: _obscurePassword,
+            decoration: InputDecoration(
+              labelText: 'Password',
+              hintText: '••••••••',
+              prefixIcon: const Icon(Icons.lock_outline_rounded, color: Color(0xFF9CA3AF)),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                  color: const Color(0xFF9CA3AF),
+                ),
+                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              ),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+              filled: true,
+              fillColor: isDark ? AppColors.surfaceDark : Colors.white,
+            ),
+            validator: (v) {
+              if (v == null || v.isEmpty) return 'Password is required';
+              if (v.length < 6) return 'Password must be at least 6 characters';
+              return null;
+            },
+          ),
+
+          const SizedBox(height: 12),
+
+          // Remember Me & Forgot Password
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Checkbox(
+                    value: _rememberMe,
+                    activeColor: AppColors.darkAction,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                    onChanged: (val) => setState(() => _rememberMe = val ?? true),
+                  ),
+                  Text(
+                    'Remember me',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark ? Colors.white70 : const Color(0xFF4B5563),
+                    ),
+                  ),
+                ],
+              ),
+              TextButton(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Password reset link sent to email if registered.')),
+                  );
+                },
+                child: const Text(
+                  'Forgot password?',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          if (authState.error != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.error_outline_rounded, color: AppColors.error, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      authState.error!,
+                      style: const TextStyle(color: AppColors.error, fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 20),
+
+          // Login Button
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.darkAction,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 0,
+              ),
+              onPressed: authState.isLoading ? null : _submit,
+              child: authState.isLoading
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                    )
+                  : Text(
+                      isAdmin ? 'Sign In as Admin' : (isOwner ? 'Sign In as Owner' : (isRider ? 'Sign In as Rider' : 'Login')),
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                    ),
+            ),
+          ),
+
+          if (isCustomer) ...[
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                const Expanded(child: Divider(color: Color(0xFFE5E7EB))),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Text(
+                    'OR',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white38 : const Color(0xFF9CA3AF),
+                    ),
+                  ),
+                ),
+                const Expanded(child: Divider(color: Color(0xFFE5E7EB))),
+              ],
+            ),
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: isDark ? Colors.white : const Color(0xFF1F2937),
+                side: const BorderSide(color: Color(0xFFE5E7EB)),
+                minimumSize: const Size(double.infinity, 48),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+              icon: const Icon(Icons.g_mobiledata_rounded, size: 24, color: AppColors.primary),
+              label: const Text('Continue with Google', style: TextStyle(fontWeight: FontWeight.w700)),
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Google Sign-In ready in production environment.')),
+                );
+              },
+            ),
+            const SizedBox(height: 24),
+            Center(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    "Don't have an account? ",
+                    style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF6B7280), fontSize: 13),
+                  ),
+                  InkWell(
+                    onTap: () => context.push('/register'),
+                    child: const Text(
+                      'Create an account',
+                      style: TextStyle(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          if (isOwner) ...[
+            const SizedBox(height: 24),
+            Center(
+              child: InkWell(
+                onTap: _showOwnerRegistrationDialog,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                    '🏪 Register Your Restaurant as Partner',
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13,
+                    ),
+                  ),
                 ),
               ),
             ),
           ],
-        ),
+        ],
       ),
+    );
+  }
+}
+
+class _HeroFeatureItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _HeroFeatureItem({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: const Color(0xFF34D399), size: 16),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }

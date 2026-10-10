@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/currency_formatter.dart';
+import '../../../core/widgets/error_and_empty_views.dart';
 import 'cart_providers.dart';
 import 'coupon_bottom_sheet.dart';
 
@@ -92,11 +94,14 @@ class CartScreen extends ConsumerWidget {
           final discount = couponDiscount > 0 ? couponDiscount : cart.discountPaise;
           final totalPayable = (subtotal + deliveryFee + tax - discount).clamp(0, 99999999);
 
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+          return Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                 // Restaurant Card
                 if (cart.restaurant != null) ...[
                   Container(
@@ -420,34 +425,42 @@ class CartScreen extends ConsumerWidget {
                 const SizedBox(height: 40),
               ],
             ),
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-        error: (err, stack) => Center(child: Text('Error: $err')),
-      ),
-      bottomNavigationBar: cartAsync.when(
-        data: (cart) {
-          if (cart.items.isEmpty) return const SizedBox.shrink();
-          final discount = couponDiscount > 0 ? couponDiscount : cart.discountPaise;
-          final totalPayable = (cart.subtotalPaise + cart.deliveryFeePaise + cart.taxPaise - discount).clamp(0, 99999999);
+          ),
+        ),
+      );
+    },
+    loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+    error: (err, stack) => CustomErrorView(
+      message: 'Failed to load cart: ${ApiClient.formatError(err)}',
+      onRetry: () => ref.refresh(cartSummaryProvider),
+    ),
+  ),
+  bottomNavigationBar: cartAsync.when(
+    data: (cart) {
+      if (cart.items.isEmpty) return const SizedBox.shrink();
+      final discount = couponDiscount > 0 ? couponDiscount : cart.discountPaise;
+      final totalPayable = (cart.subtotalPaise + cart.deliveryFeePaise + cart.taxPaise - discount).clamp(0, 99999999);
 
-          return Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isDark ? AppColors.surfaceDark : Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.08),
-                  blurRadius: 16,
-                  offset: const Offset(0, -4),
-                ),
-              ],
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isDark ? AppColors.surfaceDark : Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 16,
+              offset: const Offset(0, -4),
             ),
-            child: SafeArea(
+          ],
+        ),
+        child: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
               child: ElevatedButton(
                 onPressed: () => context.push('/checkout'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
+                  backgroundColor: AppColors.darkAction,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
@@ -461,21 +474,23 @@ class CartScreen extends ConsumerWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.15),
+                        color: Colors.white.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text(CurrencyFormatter.formatPaise(totalPayable), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
+                      child: Text(CurrencyFormatter.formatPaise(totalPayable), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: Colors.white)),
                     ),
                   ],
                 ),
               ),
             ),
-          );
-        },
-        loading: () => const SizedBox.shrink(),
-        error: (_, _) => const SizedBox.shrink(),
-      ),
-    );
+          ),
+        ),
+      );
+    },
+    loading: () => const SizedBox.shrink(),
+    error: (_, _) => const SizedBox.shrink(),
+  ),
+);
   }
 
   Widget _buildBillRow(

@@ -14,6 +14,7 @@ class RestaurantRepository {
     int? maxDeliveryTime,
     bool? openNow,
     bool? hasOffers,
+    int? maxPricePaise,
     String? sortBy,
   }) async {
     final response = await apiClient.dio.get(
@@ -26,6 +27,7 @@ class RestaurantRepository {
         'max_delivery_time': ?maxDeliveryTime,
         if (openNow != null && openNow) 'open_now': openNow,
         if (hasOffers != null && hasOffers) 'has_offers': hasOffers,
+        'max_price_paise': ?maxPricePaise,
         if (sortBy != null && sortBy.isNotEmpty) 'sort_by': sortBy,
       },
     );

@@ -3,8 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:geolocator/geolocator.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/currency_formatter.dart';
+import '../../../core/widgets/dashboard_sidebar.dart';
+import '../../../core/widgets/error_and_empty_views.dart';
+import '../../../core/widgets/motion_system.dart';
 import '../../auth/presentation/auth_providers.dart';
 
 class DeliveryProfileModel {
@@ -87,6 +91,7 @@ class DeliveryDashboardScreen extends ConsumerStatefulWidget {
 
 class _DeliveryDashboardScreenState extends ConsumerState<DeliveryDashboardScreen> {
   Timer? _locationSyncTimer;
+  int _selectedNavIndex = 0;
 
   @override
   void initState() {
@@ -194,125 +199,115 @@ class _DeliveryDashboardScreenState extends ConsumerState<DeliveryDashboardScree
     final assignmentsAsync = ref.watch(deliveryAssignmentsProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
-      backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        title: const Text('Delivery Partner Portal', style: TextStyle(fontWeight: FontWeight.w900)),
-        backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: Icon(Icons.logout_rounded, color: isDark ? Colors.white70 : Colors.black87),
-            onPressed: () => ref.read(authProvider.notifier).logout(),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(deliveryProfileProvider);
-          ref.invalidate(deliveryAssignmentsProvider);
-        },
-        color: AppColors.primary,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Rider Status & Earnings Card
-              profileAsync.when(
-                data: (profile) => Container(
-                  padding: const EdgeInsets.all(20.0),
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1E293B) : Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, 4)),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: profile.isOnline 
-                                      ? (isDark ? Colors.green.withValues(alpha: 0.2) : Colors.green.shade50)
-                                      : (isDark ? Colors.grey.withValues(alpha: 0.2) : Colors.grey.shade100),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  Icons.two_wheeler_rounded,
-                                  color: profile.isOnline ? Colors.green.shade600 : Colors.grey,
-                                  size: 28,
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isDesktop = constraints.maxWidth >= 900;
+
+        final contentWidget = RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(deliveryProfileProvider);
+            ref.invalidate(deliveryAssignmentsProvider);
+          },
+          color: AppColors.primary,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+            padding: const EdgeInsets.all(20.0),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Rider Status & Earnings Card
+                    profileAsync.when(
+                      data: (profile) => Container(
+                        padding: const EdgeInsets.all(20.0),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: AppColors.softShadow,
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
                                   children: [
-                                    Text(
-                                      profile.isOnline ? 'YOU ARE ONLINE' : 'YOU ARE OFFLINE',
-                                      style: TextStyle(
-                                        color: profile.isOnline ? Colors.green.shade600 : (isDark ? Colors.grey.shade400 : Colors.grey.shade700),
-                                        fontWeight: FontWeight.w900,
-                                        fontSize: 14,
-                                        letterSpacing: 0.5,
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: profile.isOnline 
+                                            ? (isDark ? Colors.green.withValues(alpha: 0.2) : Colors.green.shade50)
+                                            : (isDark ? Colors.grey.withValues(alpha: 0.2) : Colors.grey.shade100),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: Icon(
+                                        Icons.two_wheeler_rounded,
+                                        color: profile.isOnline ? Colors.green.shade600 : Colors.grey,
+                                        size: 28,
                                       ),
                                     ),
-                                    Text(
-                                      '${profile.vehicleType} • ${profile.vehicleNumber}',
-                                      style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade600, fontSize: 13),
-                                      overflow: TextOverflow.ellipsis,
+                                    const SizedBox(width: 14),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          profile.isOnline ? 'YOU ARE ONLINE' : 'YOU ARE OFFLINE',
+                                          style: TextStyle(
+                                            color: profile.isOnline ? Colors.green.shade600 : (isDark ? Colors.grey.shade400 : Colors.grey.shade700),
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 14,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                        Text(
+                                          '${profile.vehicleType} • ${profile.vehicleNumber}',
+                                          style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey.shade600, fontSize: 13),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
-                              ),
-                            ],
-                          ),
-                          Switch(
-                            value: profile.isOnline,
-                            activeThumbColor: AppColors.primary,
-                            activeTrackColor: AppColors.primary.withValues(alpha: 0.4),
-                            onChanged: (_) => _toggleOnline(),
-                          ),
-                        ],
+                                Switch(
+                                  value: profile.isOnline,
+                                  activeThumbColor: AppColors.veg,
+                                  onChanged: (_) => _toggleOnline(),
+                                ),
+                              ],
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 14.0),
+                              child: Divider(height: 1, color: isDark ? Colors.grey.shade800 : Colors.grey.shade200),
+                            ),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text('Total Shift Earnings:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isDark ? Colors.white : Colors.black87)),
+                                Text(
+                                  CurrencyFormatter.formatPaise(profile.totalEarningsPaise),
+                                  style: const TextStyle(color: AppColors.veg, fontWeight: FontWeight.w900, fontSize: 18),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.05),
+                      loading: () => const FoodShimmerLoading(width: double.infinity, height: 110),
+                      error: (err, stack) => CustomErrorView(
+                        message: 'Failed to load rider profile: ${ApiClient.formatError(err)}',
+                        onRetry: () => ref.invalidate(deliveryProfileProvider),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 14.0),
-                        child: Divider(height: 1, color: isDark ? Colors.grey.shade800 : Colors.grey.shade200),
-                      ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Total Shift Earnings:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isDark ? Colors.white : Colors.black87)),
-                          Text(
-                            CurrencyFormatter.formatPaise(profile.totalEarningsPaise),
-                            style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 18),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.05),
-                loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-                error: (err, stack) => Text('Error profile: $err'),
-              ),
-              
-              const SizedBox(height: 28),
-              Text(
-                'Assigned Deliveries',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: -0.5, color: isDark ? Colors.white : Colors.black87),
-              ).animate().fadeIn(delay: 100.ms),
-              const SizedBox(height: 14),
-              
-              assignmentsAsync.when(
+                    ),
+                    
+                    const SizedBox(height: 28),
+                    Text(
+                      'Assigned Deliveries',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, letterSpacing: -0.5, color: isDark ? Colors.white : Colors.black87),
+                    ).animate().fadeIn(delay: 100.ms),
+                    const SizedBox(height: 14),
+                    
+                    assignmentsAsync.when(
                 data: (assignments) {
                   if (assignments.isEmpty) {
                     return Container(
@@ -454,13 +449,99 @@ class _DeliveryDashboardScreenState extends ConsumerState<DeliveryDashboardScree
                     },
                   );
                 },
-                loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-                error: (err, stack) => Text('Error assignments: $err'),
+                loading: () => ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: 2,
+                  separatorBuilder: (_, _) => const SizedBox(height: 12),
+                  itemBuilder: (_, _) => const FoodShimmerLoading(width: double.infinity, height: 160),
+                ),
+                error: (err, stack) => CustomErrorView(
+                  message: 'Failed to load delivery assignments: ${ApiClient.formatError(err)}',
+                  onRetry: () => ref.invalidate(deliveryAssignmentsProvider),
+                ),
               ),
             ],
           ),
         ),
       ),
+    ),
+  );
+
+        if (isDesktop) {
+          return Scaffold(
+            backgroundColor: const Color(0xFFFBF9F5),
+            body: Row(
+              children: [
+                DashboardSidebar(
+                  portalTitle: 'Delivery Portal',
+                  portalSubtitle: 'Partner Fleet',
+                  selectedIndex: _selectedNavIndex,
+                  onItemSelected: (idx) => setState(() => _selectedNavIndex = idx),
+                  items: const [
+                    SidebarItem(index: 0, label: 'My Deliveries', icon: Icons.two_wheeler_rounded),
+                    SidebarItem(index: 1, label: 'Shift Earnings', icon: Icons.account_balance_wallet_rounded),
+                    SidebarItem(index: 2, label: 'Live Route / GPS', icon: Icons.navigation_rounded),
+                    SidebarItem(index: 3, label: 'Rider Profile', icon: Icons.person_rounded),
+                  ],
+                ),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                        color: Colors.white,
+                        child: Row(
+                          children: [
+                            const Text(
+                              'Delivery Partner Dashboard',
+                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              icon: const Icon(Icons.refresh_rounded),
+                              tooltip: 'Refresh',
+                              onPressed: () {
+                                ref.invalidate(deliveryProfileProvider);
+                                ref.invalidate(deliveryAssignmentsProvider);
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(child: contentWidget),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Scaffold(
+          backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+          appBar: AppBar(
+            title: const Text('Delivery Partner Portal', style: TextStyle(fontWeight: FontWeight.w900)),
+            backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded),
+                onPressed: () {
+                  ref.invalidate(deliveryProfileProvider);
+                  ref.invalidate(deliveryAssignmentsProvider);
+                },
+              ),
+              IconButton(
+                icon: Icon(Icons.logout_rounded, color: isDark ? Colors.white70 : Colors.black87),
+                onPressed: () => ref.read(authProvider.notifier).logout(),
+              ),
+            ],
+          ),
+          body: contentWidget,
+        );
+      },
     );
   }
 }

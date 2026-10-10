@@ -5,13 +5,13 @@ class AppConstants {
   static const String _envApiUrl = String.fromEnvironment('API_URL');
   
   // Local network IP address of development machine
-  static const String localBaseUrl = 'http://172.24.149.198:8000';
+  static const String localBaseUrl = 'http://localhost:8000';
   
   // Cloud production API URL (verified live Render deployment)
   static const String cloudBaseUrl = 'https://foodflow-api-lcxo.onrender.com';
   
-  // Active environment toggle: Set to true for cloud, false for local
-  static const bool useCloud = bool.fromEnvironment('USE_CLOUD', defaultValue: false);
+  // Active environment toggle: Set to true for cloud by default
+  static const bool useCloud = bool.fromEnvironment('USE_CLOUD', defaultValue: true);
   
   // Active Base URL
   static String get baseUrl {

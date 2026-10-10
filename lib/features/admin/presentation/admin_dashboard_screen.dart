@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/currency_formatter.dart';
+import '../../../core/widgets/error_and_empty_views.dart';
+import '../../../core/widgets/motion_system.dart';
+import '../../../core/widgets/dashboard_sidebar.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../notifications/presentation/notification_sheet.dart';
 import '../../restaurant/domain/models.dart';
@@ -803,41 +807,14 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
     final timeframe = ref.watch(adminTimeframeProvider);
     final promoFilter = ref.watch(adminPromotionsFilterProvider);
 
-    return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
-        title: const Text('Admin System Portal', style: TextStyle(fontWeight: FontWeight.w900)),
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            onPressed: () => NotificationSheet.show(context),
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout_rounded),
-            onPressed: () => ref.read(authProvider.notifier).logout(),
-          ),
-        ],
-        bottom: TabBar(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isDesktop = constraints.maxWidth >= 900;
+
+        final tabViews = TabBarView(
           controller: _tabController,
-          labelColor: AppColors.primary,
-          unselectedLabelColor: Colors.grey.shade600,
-          indicatorColor: AppColors.primary,
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-          tabs: const [
-            Tab(icon: Icon(Icons.dashboard_rounded), text: 'Analytics'),
-            Tab(icon: Icon(Icons.local_offer_rounded), text: 'Promotions'),
-            Tab(icon: Icon(Icons.storefront_rounded), text: 'Restaurants'),
-            Tab(icon: Icon(Icons.people_alt_rounded), text: 'Users'),
-          ],
-        ),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          // TAB 1: ADVANCED ANALYTICS & METRICS
+          children: [
+            // TAB 1: ADVANCED ANALYTICS & METRICS
           RefreshIndicator(
             onRefresh: () async => ref.invalidate(adminAnalyticsProvider),
             color: AppColors.primary,
@@ -965,8 +942,29 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
                         ),
                       ],
                     ),
-                    loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-                    error: (err, _) => Center(child: Text('Error: $err')),
+                    loading: () => Column(
+                      children: [
+                        Row(
+                          children: const [
+                            Expanded(child: FoodShimmerLoading(width: double.infinity, height: 95)),
+                            SizedBox(width: 12),
+                            Expanded(child: FoodShimmerLoading(width: double.infinity, height: 95)),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: const [
+                            Expanded(child: FoodShimmerLoading(width: double.infinity, height: 95)),
+                            SizedBox(width: 12),
+                            Expanded(child: FoodShimmerLoading(width: double.infinity, height: 95)),
+                          ],
+                        ),
+                      ],
+                    ),
+                    error: (err, _) => CustomErrorView(
+                      message: 'Failed to load executive analytics: ${ApiClient.formatError(err)}',
+                      onRetry: () => ref.invalidate(adminAnalyticsProvider),
+                    ),
                   ),
                 ],
               ),
@@ -1007,15 +1005,10 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
                     child: promosAsync.when(
                       data: (promos) {
                         if (promos.isEmpty) {
-                          return Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                Icon(Icons.local_offer_outlined, size: 64, color: Colors.black26),
-                                SizedBox(height: 12),
-                                Text('No campaigns match this filter', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                              ],
-                            ),
+                          return const CustomEmptyView(
+                            title: 'No Campaigns Found',
+                            description: 'No promotions match this status filter. Tap "Create Campaign" to launch one.',
+                            icon: Icons.local_offer_outlined,
                           );
                         }
 
@@ -1099,8 +1092,16 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
                           },
                         );
                       },
-                      loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-                      error: (err, _) => Center(child: Text('Error: $err')),
+                      loading: () => ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: 4,
+                        separatorBuilder: (_, _) => const SizedBox(height: 12),
+                        itemBuilder: (_, _) => const FoodShimmerLoading(width: double.infinity, height: 110),
+                      ),
+                      error: (err, _) => CustomErrorView(
+                        message: 'Failed to load promotions: ${ApiClient.formatError(err)}',
+                        onRetry: () => ref.invalidate(adminPromotionsProvider),
+                      ),
                     ),
                   ),
                 ],
@@ -1277,8 +1278,16 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
                         },
                       );
                     },
-                    loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-                    error: (err, _) => Center(child: Text('Error: $err')),
+                    loading: () => ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: 4,
+                      separatorBuilder: (_, _) => const SizedBox(height: 12),
+                      itemBuilder: (_, _) => const FoodShimmerLoading(width: double.infinity, height: 130),
+                    ),
+                    error: (err, _) => CustomErrorView(
+                      message: 'Failed to load restaurants directory: ${ApiClient.formatError(err)}',
+                      onRetry: () => ref.invalidate(adminRestaurantsProvider),
+                    ),
                   ),
                 ),
               ],
@@ -1313,57 +1322,170 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
                 ),
                 Expanded(
                   child: usersAsync.when(
-                    data: (users) => ListView.builder(
-                      padding: const EdgeInsets.all(16.0),
-                      itemCount: users.length,
-                      itemBuilder: (context, index) {
-                        final u = users[index];
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: AppColors.softShadow,
-                          ),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-                              child: Text(u.fullName.isNotEmpty ? u.fullName[0].toUpperCase() : 'U', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
-                            ),
-                            title: Text(u.fullName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(u.email, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                                const SizedBox(height: 2),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary.withValues(alpha: 0.08),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(u.role, style: const TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.bold)),
-                                ),
-                              ],
-                            ),
-                            trailing: Switch(
-                              value: u.isActive,
-                              activeThumbColor: AppColors.veg,
-                              onChanged: (v) => _toggleUserActive(u.id),
-                            ),
-                          ),
+                    data: (users) {
+                      if (users.isEmpty) {
+                        return const CustomEmptyView(
+                          title: 'No User Accounts',
+                          description: 'No users registered yet. Tap "Add Account" to create one.',
+                          icon: Icons.people_outline_rounded,
                         );
-                      },
+                      }
+
+                      return ListView.builder(
+                        padding: const EdgeInsets.all(16.0),
+                        itemCount: users.length,
+                        itemBuilder: (context, index) {
+                          final u = users[index];
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: AppColors.softShadow,
+                            ),
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+                                child: Text(u.fullName.isNotEmpty ? u.fullName[0].toUpperCase() : 'U', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+                              ),
+                              title: Text(u.fullName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(u.email, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                                  const SizedBox(height: 2),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary.withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(u.role, style: const TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
+                              ),
+                              trailing: Switch(
+                                value: u.isActive,
+                                activeThumbColor: AppColors.veg,
+                                onChanged: (v) => _toggleUserActive(u.id),
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                    loading: () => ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: 5,
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      itemBuilder: (_, _) => const FoodShimmerLoading(width: double.infinity, height: 72),
                     ),
-                    loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-                    error: (err, _) => Center(child: Text('Error: $err')),
+                    error: (err, _) => CustomErrorView(
+                      message: 'Failed to load user accounts: ${ApiClient.formatError(err)}',
+                      onRetry: () => ref.invalidate(adminUsersProvider),
+                    ),
                   ),
                 ),
               ],
             ),
+            ),
+          ],
+        );
+
+        if (isDesktop) {
+          return Scaffold(
+            backgroundColor: Colors.grey.shade50,
+            body: Row(
+              children: [
+                DashboardSidebar(
+                  portalTitle: 'Admin Portal',
+                  portalSubtitle: 'Super Admin',
+                  selectedIndex: _tabController.index,
+                  onItemSelected: (idx) {
+                    setState(() {
+                      _tabController.index = idx;
+                    });
+                  },
+                  items: const [
+                    SidebarItem(index: 0, label: 'Dashboard & Analytics', icon: Icons.dashboard_rounded),
+                    SidebarItem(index: 1, label: 'Offers & Coupons', icon: Icons.local_offer_rounded),
+                    SidebarItem(index: 2, label: 'Restaurants Directory', icon: Icons.storefront_rounded),
+                    SidebarItem(index: 3, label: 'Users Management', icon: Icons.people_alt_rounded),
+                  ],
+                ),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Container(
+                        height: 64,
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
+                        ),
+                        child: Row(
+                          children: [
+                            Text(
+                              _tabController.index == 0
+                                  ? 'Executive Dashboard & Overview'
+                                  : _tabController.index == 1
+                                      ? 'Promotions & Campaigns'
+                                      : _tabController.index == 2
+                                          ? 'Restaurants Directory'
+                                          : 'User Accounts Directory',
+                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF111827)),
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              icon: const Icon(Icons.notifications_outlined),
+                              onPressed: () => NotificationSheet.show(context),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(child: tabViews),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Scaffold(
+          backgroundColor: Colors.grey.shade50,
+          appBar: AppBar(
+            title: const Text('Admin System Portal', style: TextStyle(fontWeight: FontWeight.w900)),
+            backgroundColor: Colors.white,
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.notifications_outlined),
+                onPressed: () => NotificationSheet.show(context),
+              ),
+              IconButton(
+                icon: const Icon(Icons.logout_rounded),
+                onPressed: () => ref.read(authProvider.notifier).logout(),
+              ),
+            ],
+            bottom: TabBar(
+              controller: _tabController,
+              labelColor: AppColors.primary,
+              unselectedLabelColor: Colors.grey.shade600,
+              indicatorColor: AppColors.primary,
+              labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+              tabs: const [
+                Tab(icon: Icon(Icons.dashboard_rounded), text: 'Analytics'),
+                Tab(icon: Icon(Icons.local_offer_rounded), text: 'Promotions'),
+                Tab(icon: Icon(Icons.storefront_rounded), text: 'Restaurants'),
+                Tab(icon: Icon(Icons.people_alt_rounded), text: 'Users'),
+              ],
+            ),
           ),
-        ],
-      ),
+          body: tabViews,
+        );
+      },
     );
   }
 

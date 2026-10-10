@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/auth/presentation/auth_providers.dart';
@@ -39,46 +40,136 @@ CustomTransitionPage<void> _buildPageWithTransition({
   );
 }
 
+/// Pure, deterministic redirect function shared between RouterNotifier and unit tests
+String? computeAppRedirect({
+  required bool isLoading,
+  required bool isAuthenticated,
+  required String? role,
+  required String location,
+  required bool isWeb,
+}) {
+  // 1. Initial / Loading State: Hold at splash screen until auth resolves
+  if (isLoading) {
+    return location == '/splash' ? null : '/splash';
+  }
+
+  final isLoginRoute = location == '/login' ||
+      location == '/register' ||
+      location == '/restaurant-login' ||
+      location == '/delivery-login';
+
+  final isPublicBrowseRoute = location == '/' || location.startsWith('/restaurant/');
+  final isAdminRoute = location == '/admin' || location == '/admin-dashboard';
+  final isOwnerRoute = location == '/owner' || location == '/owner-dashboard' || location == '/restaurant-owner' || location == '/restaurant-login';
+  final isDeliveryRoute = location == '/rider' || location == '/delivery' || location == '/delivery-dashboard' || location == '/delivery-login';
+
+  // 2. Unauthenticated User Flow (Guest browsing, Customer Login, Dedicated Staff Logins)
+  if (!isAuthenticated) {
+    if (location == '/splash') {
+      return '/'; // Guests land on customer home
+    }
+    // Dedicated staff URLs show their respective logins directly without redirect loops
+    if (isPublicBrowseRoute || isLoginRoute || isAdminRoute || isOwnerRoute || isDeliveryRoute) {
+      return null; // Allowed directly
+    }
+    return '/login'; // Protected customer routes require login
+  }
+
+  // 3. Authenticated User Flow
+  final userRole = role ?? 'CUSTOMER';
+
+  // 3A. Mobile App (!isWeb) Restrictions:
+  // Mobile app only supports CUSTOMER and DELIVERY_PARTNER.
+  if (!isWeb) {
+    if (userRole == 'ADMIN' || userRole == 'RESTAURANT_OWNER') {
+      // Mobile does not support Admin or Owner. Keep them on /login (or redirect to /login)
+      if (isLoginRoute) {
+        return null; // Terminal on /login, prevents loop
+      }
+      return '/login';
+    }
+
+    if (userRole == 'DELIVERY_PARTNER') {
+      if (isDeliveryRoute) {
+        return null;
+      }
+      return '/rider';
+    }
+
+    // CUSTOMER role on mobile:
+    if (isAdminRoute || isOwnerRoute || isDeliveryRoute) {
+      return '/';
+    }
+    if (location == '/splash' || isLoginRoute) {
+      return '/';
+    }
+    return null; // Customer browsing allowed
+  }
+
+  // 3B. Web Platform (isWeb) Routing: Supports all 4 roles
+  if (userRole == 'ADMIN') {
+    if (isAdminRoute) {
+      return null;
+    }
+    return '/admin';
+  }
+
+  if (userRole == 'RESTAURANT_OWNER') {
+    if (isOwnerRoute) {
+      return null;
+    }
+    return '/owner';
+  }
+
+  if (userRole == 'DELIVERY_PARTNER') {
+    if (isDeliveryRoute) {
+      return null;
+    }
+    return '/rider';
+  }
+
+  // CUSTOMER role on Web:
+  if (isAdminRoute || isOwnerRoute || isDeliveryRoute) {
+    return '/'; // Deny wrong role
+  }
+  if (location == '/splash' || isLoginRoute) {
+    return '/';
+  }
+  return null;
+}
+
+class RouterNotifier extends ChangeNotifier {
+  final Ref _ref;
+
+  RouterNotifier(this._ref) {
+    _ref.listen<AuthState>(authProvider, (previous, next) {
+      notifyListeners();
+    });
+  }
+
+  String? redirect(BuildContext context, GoRouterState state) {
+    final authState = _ref.read(authProvider);
+    return computeAppRedirect(
+      isLoading: authState.isLoading,
+      isAuthenticated: authState.isAuthenticated,
+      role: authState.user?.role,
+      location: state.matchedLocation,
+      isWeb: kIsWeb,
+    );
+  }
+}
+
+final routerNotifierProvider = Provider<RouterNotifier>((ref) {
+  return RouterNotifier(ref);
+});
+
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authProvider);
+  final notifier = ref.watch(routerNotifierProvider);
 
   return GoRouter(
     initialLocation: '/splash',
-    redirect: (context, state) {
-      if (authState.isLoading) return null;
-
-      // Allow splash screen to show on boot
-      if (state.matchedLocation == '/splash') return null;
-
-      final isLoginRoute = state.matchedLocation == '/login' || 
-                          state.matchedLocation == '/register' ||
-                          state.matchedLocation == '/admin' ||
-                          state.matchedLocation == '/restaurant-login' ||
-                          state.matchedLocation == '/delivery-login';
-
-      if (!authState.isAuthenticated && !isLoginRoute) {
-        return '/login';
-      }
-
-      if (authState.isAuthenticated) {
-        final role = authState.user?.role ?? 'CUSTOMER';
-
-        if (isLoginRoute) {
-          if (role == 'RESTAURANT_OWNER') return '/owner-dashboard';
-          if (role == 'DELIVERY_PARTNER') return '/delivery-dashboard';
-          if (role == 'ADMIN') return '/admin-dashboard';
-          return '/';
-        }
-
-        if (state.matchedLocation == '/') {
-          if (role == 'RESTAURANT_OWNER') return '/owner-dashboard';
-          if (role == 'DELIVERY_PARTNER') return '/delivery-dashboard';
-          if (role == 'ADMIN') return '/admin-dashboard';
-        }
-      }
-
-      return null;
-    },
+    refreshListenable: notifier,
+    redirect: notifier.redirect,
     routes: [
       GoRoute(
         path: '/splash',
@@ -101,7 +192,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _buildPageWithTransition(
           context: context,
           state: state,
-          child: const LoginScreen(),
+          child: const LoginScreen(forcedRole: 'CUSTOMER'),
         ),
       ),
       GoRoute(
@@ -114,18 +205,106 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/admin',
-        pageBuilder: (context, state) => _buildPageWithTransition(
-          context: context,
-          state: state,
-          child: const LoginScreen(),
-        ),
+        pageBuilder: (context, state) {
+          final authState = ref.watch(authProvider);
+          final isAuthenticated = authState.isAuthenticated && authState.user?.role == 'ADMIN';
+          return _buildPageWithTransition(
+            context: context,
+            state: state,
+            child: isAuthenticated ? const AdminDashboardScreen() : const LoginScreen(forcedRole: 'ADMIN'),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/admin-dashboard',
+        pageBuilder: (context, state) {
+          final authState = ref.watch(authProvider);
+          final isAuthenticated = authState.isAuthenticated && authState.user?.role == 'ADMIN';
+          return _buildPageWithTransition(
+            context: context,
+            state: state,
+            child: isAuthenticated ? const AdminDashboardScreen() : const LoginScreen(forcedRole: 'ADMIN'),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/owner',
+        pageBuilder: (context, state) {
+          final authState = ref.watch(authProvider);
+          final isAuthenticated = authState.isAuthenticated && authState.user?.role == 'RESTAURANT_OWNER';
+          return _buildPageWithTransition(
+            context: context,
+            state: state,
+            child: isAuthenticated ? const OwnerDashboardScreen() : const LoginScreen(forcedRole: 'RESTAURANT_OWNER'),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/owner-dashboard',
+        pageBuilder: (context, state) {
+          final authState = ref.watch(authProvider);
+          final isAuthenticated = authState.isAuthenticated && authState.user?.role == 'RESTAURANT_OWNER';
+          return _buildPageWithTransition(
+            context: context,
+            state: state,
+            child: isAuthenticated ? const OwnerDashboardScreen() : const LoginScreen(forcedRole: 'RESTAURANT_OWNER'),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/restaurant-owner',
+        pageBuilder: (context, state) {
+          final authState = ref.watch(authProvider);
+          final isAuthenticated = authState.isAuthenticated && authState.user?.role == 'RESTAURANT_OWNER';
+          return _buildPageWithTransition(
+            context: context,
+            state: state,
+            child: isAuthenticated ? const OwnerDashboardScreen() : const LoginScreen(forcedRole: 'RESTAURANT_OWNER'),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/rider',
+        pageBuilder: (context, state) {
+          final authState = ref.watch(authProvider);
+          final isAuthenticated = authState.isAuthenticated && authState.user?.role == 'DELIVERY_PARTNER';
+          return _buildPageWithTransition(
+            context: context,
+            state: state,
+            child: isAuthenticated ? const DeliveryDashboardScreen() : const LoginScreen(forcedRole: 'DELIVERY_PARTNER'),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/delivery',
+        pageBuilder: (context, state) {
+          final authState = ref.watch(authProvider);
+          final isAuthenticated = authState.isAuthenticated && authState.user?.role == 'DELIVERY_PARTNER';
+          return _buildPageWithTransition(
+            context: context,
+            state: state,
+            child: isAuthenticated ? const DeliveryDashboardScreen() : const LoginScreen(forcedRole: 'DELIVERY_PARTNER'),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/delivery-dashboard',
+        pageBuilder: (context, state) {
+          final authState = ref.watch(authProvider);
+          final isAuthenticated = authState.isAuthenticated && authState.user?.role == 'DELIVERY_PARTNER';
+          return _buildPageWithTransition(
+            context: context,
+            state: state,
+            child: isAuthenticated ? const DeliveryDashboardScreen() : const LoginScreen(forcedRole: 'DELIVERY_PARTNER'),
+          );
+        },
       ),
       GoRoute(
         path: '/restaurant-login',
         pageBuilder: (context, state) => _buildPageWithTransition(
           context: context,
           state: state,
-          child: const LoginScreen(),
+          child: const LoginScreen(forcedRole: 'RESTAURANT_OWNER'),
         ),
       ),
       GoRoute(
@@ -133,31 +312,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         pageBuilder: (context, state) => _buildPageWithTransition(
           context: context,
           state: state,
-          child: const LoginScreen(),
-        ),
-      ),
-      GoRoute(
-        path: '/owner-dashboard',
-        pageBuilder: (context, state) => _buildPageWithTransition(
-          context: context,
-          state: state,
-          child: const OwnerDashboardScreen(),
-        ),
-      ),
-      GoRoute(
-        path: '/delivery-dashboard',
-        pageBuilder: (context, state) => _buildPageWithTransition(
-          context: context,
-          state: state,
-          child: const DeliveryDashboardScreen(),
-        ),
-      ),
-      GoRoute(
-        path: '/admin-dashboard',
-        pageBuilder: (context, state) => _buildPageWithTransition(
-          context: context,
-          state: state,
-          child: const AdminDashboardScreen(),
+          child: const LoginScreen(forcedRole: 'DELIVERY_PARTNER'),
         ),
       ),
       GoRoute(
@@ -209,3 +364,4 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+

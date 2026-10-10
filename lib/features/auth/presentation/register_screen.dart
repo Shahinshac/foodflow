@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/theme/app_colors.dart';
 import 'auth_providers.dart';
 
@@ -36,7 +36,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             email: _emailController.text.trim(),
             password: _passwordController.text,
             fullName: _nameController.text.trim(),
-            phone: _phoneController.text.trim(),
+            phone: _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
           );
       if (success && mounted) {
         context.go('/');
@@ -50,214 +50,347 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? AppColors.backgroundDark : Colors.white,
-      appBar: AppBar(
-        title: const Text('Create Account', style: TextStyle(fontWeight: FontWeight.w800)),
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
-          onPressed: () => context.go('/login'),
-        ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          child: Column(
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-                decoration: const BoxDecoration(
-                  gradient: AppColors.primaryGradient,
-                  borderRadius: BorderRadius.only(
-                    bottomLeft: Radius.circular(32),
-                    bottomRight: Radius.circular(32),
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    const Text(
-                      'Join FoodFlow',
-                      style: TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                        letterSpacing: -0.5,
-                      ),
-                    ).animate().fadeIn().slideY(begin: -0.1),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Order from the best restaurants around you',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.white.withValues(alpha: 0.9),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ).animate().fadeIn(delay: 100.ms),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (authState.error != null) ...[
+      backgroundColor: isDark ? AppColors.backgroundDark : const Color(0xFFFBF9F5),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isDesktop = constraints.maxWidth >= 900;
+
+          if (isDesktop) {
+            // DESKTOP SPLIT SCREEN
+            return Row(
+              children: [
+                // Left Brand Column
+                Expanded(
+                  flex: 45,
+                  child: Container(
+                    color: const Color(0xFF13221C),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        CachedNetworkImage(
+                          imageUrl: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=1000&q=80',
+                          fit: BoxFit.cover,
+                          placeholder: (_, __) => Container(color: const Color(0xFF13221C)),
+                          errorWidget: (_, __, ___) => Container(color: const Color(0xFF13221C)),
+                        ),
                         Container(
-                          padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: AppColors.error.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                const Color(0xFF13221C).withValues(alpha: 0.8),
+                                const Color(0xFF13221C).withValues(alpha: 0.95),
+                              ],
+                            ),
                           ),
-                          child: Row(
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.all(48.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Icon(Icons.error_outline_rounded, color: AppColors.error, size: 22),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  authState.error!,
-                                  style: const TextStyle(
-                                    color: AppColors.error,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 13,
+                              InkWell(
+                                onTap: () => context.go('/'),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primary,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: const Icon(Icons.restaurant_menu_rounded, color: Colors.white, size: 22),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    const Text(
+                                      'FoodFlow',
+                                      style: TextStyle(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.w900,
+                                        color: Colors.white,
+                                        letterSpacing: -0.5,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: const [
+                                  Text(
+                                    'Create an Account\nStart Ordering',
+                                    style: TextStyle(
+                                      fontSize: 38,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.white,
+                                      height: 1.15,
+                                      letterSpacing: -1.0,
+                                    ),
                                   ),
+                                  SizedBox(height: 16),
+                                  Text(
+                                    'Join thousands of happy food lovers discovering the best local dining spots.',
+                                    style: TextStyle(fontSize: 16, color: Colors.white70, height: 1.5),
+                                  ),
+                                ],
+                              ),
+                              InkWell(
+                                onTap: () => context.go('/login'),
+                                child: Row(
+                                  children: const [
+                                    Icon(Icons.arrow_back_rounded, color: Colors.white70, size: 16),
+                                    SizedBox(width: 8),
+                                    Text('Back to Login', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
-                        ).animate().fadeIn().shake(duration: 400.ms),
-                        const SizedBox(height: 18),
+                        ),
                       ],
+                    ),
+                  ),
+                ),
 
-                      TextFormField(
-                        controller: _nameController,
-                        decoration: InputDecoration(
-                          labelText: 'Full Name',
-                          hintText: 'e.g. Alex Johnson',
-                          prefixIcon: const Icon(Icons.person_outline_rounded, color: AppColors.primary),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
-                        textInputAction: TextInputAction.next,
-                        validator: (val) => val == null || val.trim().isEmpty ? 'Please enter your full name' : null,
-                      ).animate().fadeIn(delay: 200.ms).slideX(begin: -0.05),
-                      const SizedBox(height: 16),
+                // Right Registration Card
+                Expanded(
+                  flex: 55,
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 32),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 440),
+                        child: _buildRegisterForm(authState, isDark, true),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
 
-                      TextFormField(
-                        controller: _emailController,
-                        decoration: InputDecoration(
-                          labelText: 'Email Address',
-                          hintText: 'alex@example.com',
-                          prefixIcon: const Icon(Icons.email_outlined, color: AppColors.primary),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
-                        keyboardType: TextInputType.emailAddress,
-                        textInputAction: TextInputAction.next,
-                        validator: (val) {
-                          if (val == null || val.trim().isEmpty) return 'Please enter an email';
-                          if (!val.contains('@') || !val.contains('.')) return 'Please enter a valid email address';
-                          return null;
-                        },
-                      ).animate().fadeIn(delay: 250.ms).slideX(begin: 0.05),
-                      const SizedBox(height: 16),
-
-                      TextFormField(
-                        controller: _phoneController,
-                        decoration: InputDecoration(
-                          labelText: 'Phone Number (Optional)',
-                          hintText: '+91 9876543210',
-                          prefixIcon: const Icon(Icons.phone_outlined, color: AppColors.primary),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
-                        keyboardType: TextInputType.phone,
-                        textInputAction: TextInputAction.next,
-                      ).animate().fadeIn(delay: 300.ms).slideX(begin: -0.05),
-                      const SizedBox(height: 16),
-
-                      TextFormField(
-                        controller: _passwordController,
-                        decoration: InputDecoration(
-                          labelText: 'Password',
-                          hintText: 'Minimum 6 characters',
-                          prefixIcon: const Icon(Icons.lock_outline_rounded, color: AppColors.primary),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                              color: isDark ? AppColors.textMutedDark : Colors.grey.shade600,
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _obscurePassword = !_obscurePassword;
-                              });
-                            },
-                          ),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-                        ),
-                        obscureText: _obscurePassword,
-                        textInputAction: TextInputAction.done,
-                        onFieldSubmitted: (_) => _submit(),
-                        validator: (val) =>
-                            val == null || val.length < 6 ? 'Password must be at least 6 characters' : null,
-                      ).animate().fadeIn(delay: 350.ms).slideX(begin: 0.05),
-                      const SizedBox(height: 28),
-
-                      ElevatedButton(
-                        onPressed: authState.isLoading ? null : _submit,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          elevation: 3,
-                          shadowColor: AppColors.primary.withValues(alpha: 0.4),
-                        ),
-                        child: authState.isLoading
-                            ? const SizedBox(
-                                height: 22,
-                                width: 22,
-                                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
-                              )
-                            : const Text('Create Account', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      ).animate().fadeIn(delay: 400.ms).scale(begin: const Offset(0.98, 0.98)),
-                      const SizedBox(height: 24),
-
+          // MOBILE LAYOUT
+          return SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Column(
+                    children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(
-                            'Already have an account? ',
-                            style: TextStyle(
-                              color: isDark ? AppColors.textSecondaryDark : Colors.grey.shade600,
-                              fontSize: 14,
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary,
+                              borderRadius: BorderRadius.circular(12),
                             ),
+                            child: const Icon(Icons.restaurant_menu_rounded, color: Colors.white, size: 22),
                           ),
-                          GestureDetector(
-                            onTap: () => context.go('/login'),
-                            child: const Text(
-                              'Sign In',
-                              style: TextStyle(
-                                color: AppColors.primary,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 14,
-                              ),
+                          const SizedBox(width: 10),
+                          const Text(
+                            'FoodFlow',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.5,
                             ),
                           ),
                         ],
-                      ).animate().fadeIn(delay: 450.ms),
+                      ),
+                      const SizedBox(height: 24),
+                      _buildRegisterForm(authState, isDark, false),
                     ],
                   ),
                 ),
               ),
-            ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildRegisterForm(AuthState authState, bool isDark, bool isDesktop) {
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Create Account',
+            style: TextStyle(
+              fontSize: isDesktop ? 28 : 24,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.5,
+              color: isDark ? Colors.white : const Color(0xFF111827),
+            ),
           ),
-        ),
+          const SizedBox(height: 6),
+          Text(
+            'Join FoodFlow and start your journey',
+            style: TextStyle(
+              fontSize: 14,
+              color: isDark ? Colors.white60 : const Color(0xFF6B7280),
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Full Name
+          TextFormField(
+            controller: _nameController,
+            decoration: InputDecoration(
+              labelText: 'Full Name',
+              hintText: 'John Doe',
+              prefixIcon: const Icon(Icons.person_outline_rounded, color: Color(0xFF9CA3AF)),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+              filled: true,
+              fillColor: isDark ? AppColors.surfaceDark : Colors.white,
+            ),
+            validator: (v) => v == null || v.trim().isEmpty ? 'Full name is required' : null,
+          ),
+
+          const SizedBox(height: 16),
+
+          // Email
+          TextFormField(
+            controller: _emailController,
+            keyboardType: TextInputType.emailAddress,
+            decoration: InputDecoration(
+              labelText: 'Email Address',
+              hintText: 'name@example.com',
+              prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFF9CA3AF)),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+              filled: true,
+              fillColor: isDark ? AppColors.surfaceDark : Colors.white,
+            ),
+            validator: (v) {
+              if (v == null || v.trim().isEmpty) return 'Email is required';
+              if (!v.contains('@')) return 'Enter a valid email address';
+              return null;
+            },
+          ),
+
+          const SizedBox(height: 16),
+
+          // Phone
+          TextFormField(
+            controller: _phoneController,
+            keyboardType: TextInputType.phone,
+            decoration: InputDecoration(
+              labelText: 'Phone Number (Optional)',
+              hintText: '9876543210',
+              prefixIcon: const Icon(Icons.phone_outlined, color: Color(0xFF9CA3AF)),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+              filled: true,
+              fillColor: isDark ? AppColors.surfaceDark : Colors.white,
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Password
+          TextFormField(
+            controller: _passwordController,
+            obscureText: _obscurePassword,
+            decoration: InputDecoration(
+              labelText: 'Password',
+              hintText: '••••••••',
+              prefixIcon: const Icon(Icons.lock_outline_rounded, color: Color(0xFF9CA3AF)),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                  color: const Color(0xFF9CA3AF),
+                ),
+                onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+              ),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+              filled: true,
+              fillColor: isDark ? AppColors.surfaceDark : Colors.white,
+            ),
+            validator: (v) {
+              if (v == null || v.isEmpty) return 'Password is required';
+              if (v.length < 6) return 'Password must be at least 6 characters';
+              return null;
+            },
+          ),
+
+          if (authState.error != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.error_outline_rounded, color: AppColors.error, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(authState.error!, style: const TextStyle(color: AppColors.error, fontSize: 13)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 24),
+
+          // Submit Button
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.darkAction,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 0,
+              ),
+              onPressed: authState.isLoading ? null : _submit,
+              child: authState.isLoading
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                    )
+                  : const Text('Sign Up', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Already have account
+          Center(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'Already have an account? ',
+                  style: TextStyle(color: isDark ? Colors.white70 : const Color(0xFF6B7280), fontSize: 13),
+                ),
+                InkWell(
+                  onTap: () => context.go('/login'),
+                  child: const Text(
+                    'Login',
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

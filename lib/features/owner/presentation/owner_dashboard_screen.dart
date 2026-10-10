@@ -4,9 +4,13 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/network/upload_providers.dart';
 import '../../../core/utils/currency_formatter.dart';
+import '../../../core/widgets/dashboard_sidebar.dart';
+import '../../../core/widgets/error_and_empty_views.dart';
+import '../../../core/widgets/motion_system.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../notifications/presentation/notification_sheet.dart';
 import '../../restaurant/domain/models.dart';
@@ -55,6 +59,9 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
   void initState() {
     super.initState();
     _tabController = TabController(length: 5, vsync: this);
+    _tabController.addListener(() {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -726,63 +733,13 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
           ),
         ),
       ),
-      data: (restaurant) => Scaffold(
-        backgroundColor: Colors.grey.shade50,
-        appBar: AppBar(
-          title: Text(restaurant.name, style: const TextStyle(fontWeight: FontWeight.w900)),
-          backgroundColor: Colors.white,
-          surfaceTintColor: Colors.transparent,
-          elevation: 0,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.notifications_outlined),
-              onPressed: () => NotificationSheet.show(context),
-            ),
-            IconButton(
-              icon: const Icon(Icons.logout_rounded),
-              onPressed: () => ref.read(authProvider.notifier).logout(),
-            ),
-          ],
-          bottom: TabBar(
+      data: (restaurant) => LayoutBuilder(
+        builder: (context, constraints) {
+          final isDesktop = constraints.maxWidth >= 900;
+
+          final tabViews = TabBarView(
             controller: _tabController,
-            labelColor: AppColors.primary,
-            unselectedLabelColor: Colors.grey.shade600,
-            indicatorColor: AppColors.primary,
-            isScrollable: true,
-            labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            tabs: const [
-              Tab(icon: Icon(Icons.receipt_long_rounded), text: 'Live Orders'),
-              Tab(icon: Icon(Icons.restaurant_menu_rounded), text: 'Menu Items'),
-              Tab(icon: Icon(Icons.local_offer_rounded), text: 'Offers'),
-              Tab(icon: Icon(Icons.insights_rounded), text: 'Analytics'),
-              Tab(icon: Icon(Icons.storefront_rounded), text: 'Store Controls'),
-            ],
-          ),
-        ),
-        body: Column(
-          children: [
-            if (!restaurant.isApproved)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                color: Colors.amber.shade100,
-                child: Row(
-                  children: [
-                    const Icon(Icons.hourglass_top_rounded, color: Colors.orange, size: 20),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Store under review. Super Admin will verify and activate your restaurant soon.',
-                        style: TextStyle(color: Colors.brown.shade800, fontSize: 12, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
+            children: [
                   // TAB 1: LIVE ORDERS
           RefreshIndicator(
             onRefresh: () async => ref.invalidate(ownerOrdersProvider),
@@ -790,19 +747,10 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
             child: ordersAsync.when(
               data: (orders) {
                 if (orders.isEmpty) {
-                  return ListView(
-                    children: [
-                      SizedBox(height: MediaQuery.of(context).size.height * 0.2),
-                      Center(
-                        child: Column(
-                          children: [
-                            Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey.shade300),
-                            const SizedBox(height: 16),
-                            Text('No incoming orders right now', style: TextStyle(color: Colors.grey.shade600, fontSize: 16)),
-                          ],
-                        ),
-                      ),
-                    ],
+                  return const CustomEmptyView(
+                    title: 'No Incoming Orders',
+                    description: 'Your store is ready. New incoming customer orders will appear here automatically.',
+                    icon: Icons.receipt_long_outlined,
                   );
                 }
 
@@ -917,8 +865,16 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
                   },
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-              error: (err, _) => Center(child: Text('Error: $err')),
+              loading: () => ListView.separated(
+                padding: const EdgeInsets.all(16),
+                itemCount: 3,
+                separatorBuilder: (_, _) => const SizedBox(height: 16),
+                itemBuilder: (_, _) => const FoodShimmerLoading(width: double.infinity, height: 160),
+              ),
+              error: (err, _) => CustomErrorView(
+                message: 'Failed to load orders: ${ApiClient.formatError(err)}',
+                onRetry: () => ref.invalidate(ownerOrdersProvider),
+              ),
             ),
           ),
 
@@ -937,19 +893,10 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
               child: foodsAsync.when(
                 data: (foods) {
                   if (foods.isEmpty) {
-                    return ListView(
-                      children: [
-                        SizedBox(height: MediaQuery.of(context).size.height * 0.2),
-                        Center(
-                          child: Column(
-                            children: [
-                              Icon(Icons.restaurant_menu_rounded, size: 64, color: Colors.grey.shade300),
-                              const SizedBox(height: 16),
-                              Text('No food items yet. Tap + to add.', style: TextStyle(color: Colors.grey.shade600)),
-                            ],
-                          ),
-                        ),
-                      ],
+                    return const CustomEmptyView(
+                      title: 'No Dishes on Menu',
+                      description: 'Your menu is empty. Tap "Add Dish" to add your first delicious item.',
+                      icon: Icons.restaurant_menu_rounded,
                     );
                   }
 
@@ -994,8 +941,16 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
                     },
                   );
                 },
-                loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-                error: (err, _) => Center(child: Text('Error: $err')),
+                loading: () => ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: 4,
+                  separatorBuilder: (_, _) => const SizedBox(height: 12),
+                  itemBuilder: (_, _) => const FoodShimmerLoading(width: double.infinity, height: 75),
+                ),
+                error: (err, _) => CustomErrorView(
+                  message: 'Failed to load menu dishes: ${ApiClient.formatError(err)}',
+                  onRetry: () => ref.invalidate(ownerFoodsProvider),
+                ),
               ),
             ),
           ),
@@ -1015,21 +970,10 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
               child: promosAsync.when(
                 data: (promos) {
                   if (promos.isEmpty) {
-                    return ListView(
-                      children: [
-                        SizedBox(height: MediaQuery.of(context).size.height * 0.2),
-                        Center(
-                          child: Column(
-                            children: [
-                              Icon(Icons.local_offer_outlined, size: 64, color: Colors.grey.shade300),
-                              const SizedBox(height: 16),
-                              Text('No offers created yet', style: TextStyle(color: Colors.grey.shade600, fontSize: 16, fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 8),
-                              const Text('Boost your orders by launching a special discount campaign!'),
-                            ],
-                          ),
-                        ),
-                      ],
+                    return const CustomEmptyView(
+                      title: 'No Active Offers',
+                      description: 'Boost your restaurant revenue by launching a special coupon discount.',
+                      icon: Icons.local_offer_outlined,
                     );
                   }
 
@@ -1094,8 +1038,16 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
                     },
                   );
                 },
-                loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-                error: (err, _) => Center(child: Text('Error: $err')),
+                loading: () => ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: 3,
+                  separatorBuilder: (_, _) => const SizedBox(height: 12),
+                  itemBuilder: (_, _) => const FoodShimmerLoading(width: double.infinity, height: 110),
+                ),
+                error: (err, _) => CustomErrorView(
+                  message: 'Failed to load store offers: ${ApiClient.formatError(err)}',
+                  onRetry: () => ref.invalidate(ownerPromotionsProvider),
+                ),
               ),
             ),
           ),
@@ -1222,8 +1174,32 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
                   ),
                 );
               },
-              loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-              error: (err, _) => Center(child: Text('Error loading analytics: $err')),
+              loading: () => SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    Row(
+                      children: const [
+                        Expanded(child: FoodShimmerLoading(width: double.infinity, height: 95)),
+                        SizedBox(width: 12),
+                        Expanded(child: FoodShimmerLoading(width: double.infinity, height: 95)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: const [
+                        Expanded(child: FoodShimmerLoading(width: double.infinity, height: 95)),
+                        SizedBox(width: 12),
+                        Expanded(child: FoodShimmerLoading(width: double.infinity, height: 95)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              error: (err, _) => CustomErrorView(
+                message: 'Failed to load restaurant analytics: ${ApiClient.formatError(err)}',
+                onRetry: () => ref.invalidate(ownerAnalyticsProvider),
+              ),
             ),
           ),
 
@@ -1351,13 +1327,177 @@ class _OwnerDashboardScreenState extends ConsumerState<OwnerDashboardScreen> wit
             ),
           ),
         ],
+      );
+
+          if (isDesktop) {
+            return Scaffold(
+              backgroundColor: const Color(0xFFFBF9F5),
+              body: Row(
+                children: [
+                  DashboardSidebar(
+                    portalTitle: 'Owner Portal',
+                    portalSubtitle: restaurant.name,
+                    selectedIndex: _tabController.index,
+                    onItemSelected: (idx) => setState(() => _tabController.index = idx),
+                    items: const [
+                      SidebarItem(index: 0, label: 'Live Orders', icon: Icons.receipt_long_rounded),
+                      SidebarItem(index: 1, label: 'Menu Items', icon: Icons.restaurant_menu_rounded),
+                      SidebarItem(index: 2, label: 'Offers', icon: Icons.local_offer_rounded),
+                      SidebarItem(index: 3, label: 'Analytics', icon: Icons.insights_rounded),
+                      SidebarItem(index: 4, label: 'Store Controls', icon: Icons.storefront_rounded),
+                    ],
+                  ),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                          color: Colors.white,
+                          child: Row(
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    restaurant.name,
+                                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                                  ),
+                                  Text(
+                                    restaurant.isApproved ? 'Verified Partner' : 'Pending Verification',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: restaurant.isApproved ? AppColors.veg : Colors.amber.shade800,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const Spacer(),
+                              Row(
+                                children: [
+                                  Text(
+                                    restaurant.isOpen ? 'OPEN' : 'CLOSED',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                      color: restaurant.isOpen ? AppColors.veg : AppColors.error,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Switch(
+                                    value: restaurant.isOpen,
+                                    activeThumbColor: AppColors.veg,
+                                    onChanged: _toggleStoreStatus,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(width: 12),
+                              IconButton(
+                                icon: const Icon(Icons.notifications_outlined),
+                                onPressed: () => NotificationSheet.show(context),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.refresh_rounded),
+                                tooltip: 'Refresh',
+                                onPressed: () {
+                                  ref.invalidate(ownerRestaurantProvider);
+                                  ref.invalidate(ownerOrdersProvider);
+                                  ref.invalidate(ownerFoodsProvider);
+                                  ref.invalidate(ownerPromotionsProvider);
+                                  ref.invalidate(ownerAnalyticsProvider);
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (!restaurant.isApproved)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                            color: Colors.amber.shade100,
+                            child: Row(
+                              children: [
+                                const Icon(Icons.hourglass_top_rounded, color: Colors.orange, size: 20),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'Store under review. Super Admin will verify and activate your restaurant soon.',
+                                    style: TextStyle(color: Colors.brown.shade800, fontSize: 12, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        Expanded(child: tabViews),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return Scaffold(
+            backgroundColor: Colors.grey.shade50,
+            appBar: AppBar(
+              title: Text(restaurant.name, style: const TextStyle(fontWeight: FontWeight.w900)),
+              backgroundColor: Colors.white,
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.notifications_outlined),
+                  onPressed: () => NotificationSheet.show(context),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.logout_rounded),
+                  onPressed: () => ref.read(authProvider.notifier).logout(),
+                ),
+              ],
+              bottom: TabBar(
+                controller: _tabController,
+                labelColor: AppColors.primary,
+                unselectedLabelColor: Colors.grey.shade600,
+                indicatorColor: AppColors.primary,
+                isScrollable: true,
+                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                tabs: const [
+                  Tab(icon: Icon(Icons.receipt_long_rounded), text: 'Live Orders'),
+                  Tab(icon: Icon(Icons.restaurant_menu_rounded), text: 'Menu Items'),
+                  Tab(icon: Icon(Icons.local_offer_rounded), text: 'Offers'),
+                  Tab(icon: Icon(Icons.insights_rounded), text: 'Analytics'),
+                  Tab(icon: Icon(Icons.storefront_rounded), text: 'Store Controls'),
+                ],
+              ),
+            ),
+            body: Column(
+              children: [
+                if (!restaurant.isApproved)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    color: Colors.amber.shade100,
+                    child: Row(
+                      children: [
+                        const Icon(Icons.hourglass_top_rounded, color: Colors.orange, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Store under review. Super Admin will verify and activate your restaurant soon.',
+                            style: TextStyle(color: Colors.brown.shade800, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                Expanded(child: tabViews),
+              ],
+            ),
+          );
+        },
       ),
-    ),
-  ],
-),
-),
-);
-}
+    );
+  }
 
   Widget _buildMetricCard(String title, String value, IconData icon, Color color) {
     return Container(

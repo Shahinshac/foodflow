@@ -15,6 +15,7 @@ final filterMinRatingProvider = StateProvider<double?>((ref) => null);
 final filterMaxDeliveryTimeProvider = StateProvider<int?>((ref) => null);
 final filterOpenNowProvider = StateProvider<bool>((ref) => false);
 final filterHasOffersProvider = StateProvider<bool>((ref) => false);
+final filterMaxPricePaiseProvider = StateProvider<int?>((ref) => null);
 final sortByProvider = StateProvider<String>((ref) => 'recommended');
 
 // Favorites State Notifier
@@ -77,6 +78,7 @@ final restaurantsListProvider = FutureProvider<List<RestaurantModel>>((ref) asyn
   final maxDeliveryTime = ref.watch(filterMaxDeliveryTimeProvider);
   final openNow = ref.watch(filterOpenNowProvider);
   final hasOffers = ref.watch(filterHasOffersProvider);
+  final maxPricePaise = ref.watch(filterMaxPricePaiseProvider);
   final sortBy = ref.watch(sortByProvider);
   final favIds = ref.watch(favoritesProvider);
 
@@ -88,6 +90,7 @@ final restaurantsListProvider = FutureProvider<List<RestaurantModel>>((ref) asyn
     maxDeliveryTime: maxDeliveryTime,
     openNow: openNow,
     hasOffers: hasOffers,
+    maxPricePaise: maxPricePaise,
     sortBy: sortBy,
   );
 

@@ -19,6 +19,14 @@ class AppColors {
   static const Color nonVeg = Color(0xFFE74C3C);
   static const Color starRating = Color(0xFFFFB800);
 
+  // Reference UI Special Tokens
+  static const Color darkAction = Color(0xFF16201B); // Dark charcoal/forest for primary buttons & active chips
+  static const Color darkActionHover = Color(0xFF0F1713);
+  static const Color sidebarDark = Color(0xFF13221C); // Deep forest dark sidebar
+  static const Color sidebarDarkSurface = Color(0xFF1A2E26);
+  static const Color creamBackground = Color(0xFFFBF9F5); // Warm cream off-white background
+  static const Color chipBackground = Color(0xFFF3F4F6);
+
   // Light Theme Surfaces
   static const Color backgroundLight = Color(0xFFF8F9FD);
   static const Color surfaceLight = Color(0xFFFFFFFF);

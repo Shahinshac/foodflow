@@ -1,10 +1,7 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/theme/app_colors.dart';
-import '../presentation/auth_providers.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -19,7 +16,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   late Animation<double> _scaleAnimation;
   late Animation<double> _fadeAnimation;
   late Animation<double> _glowAnimation;
-  Timer? _redirectTimer;
 
   @override
   void initState() {
@@ -51,31 +47,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     );
 
     _controller.forward();
-
-    // Smooth redirect after animation completes
-    _redirectTimer = Timer(const Duration(milliseconds: 1800), () {
-      if (!mounted) return;
-      final authState = ref.read(authProvider);
-      if (authState.isAuthenticated) {
-        final role = authState.user?.role ?? 'CUSTOMER';
-        if (role == 'RESTAURANT_OWNER') {
-          context.go('/owner-dashboard');
-        } else if (role == 'DELIVERY_PARTNER') {
-          context.go('/delivery-dashboard');
-        } else if (role == 'ADMIN') {
-          context.go('/admin-dashboard');
-        } else {
-          context.go('/');
-        }
-      } else {
-        context.go('/login');
-      }
-    });
   }
 
   @override
   void dispose() {
-    _redirectTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }

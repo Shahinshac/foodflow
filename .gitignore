@@ -83,3 +83,6 @@ yarn-error.log*
 backend/uploads/
 uploads/
 
+# Tooling and temporary test caches
+.playwright-mcp/
+

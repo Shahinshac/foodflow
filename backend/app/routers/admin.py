@@ -23,18 +23,17 @@ def get_admin_metrics(
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
-    total_users = db.query(User).count()
-    total_restaurants = db.query(Restaurant).count()
-    pending_restaurants = db.query(Restaurant).filter(Restaurant.is_approved == False).count()
-    total_partners = db.query(DeliveryPartner).count()
-    pending_partners = db.query(DeliveryPartner).filter(DeliveryPartner.is_verified == False).count()
-    total_orders = db.query(Order).count()
-    active_orders = db.query(Order).filter(
+    total_users = db.query(func.count(User.id)).scalar() or 0
+    total_restaurants = db.query(func.count(Restaurant.id)).scalar() or 0
+    pending_restaurants = db.query(func.count(Restaurant.id)).filter(Restaurant.is_approved == False).scalar() or 0
+    total_partners = db.query(func.count(DeliveryPartner.id)).scalar() or 0
+    pending_partners = db.query(func.count(DeliveryPartner.id)).filter(DeliveryPartner.is_verified == False).scalar() or 0
+    total_orders = db.query(func.count(Order.id)).scalar() or 0
+    active_orders = db.query(func.count(Order.id)).filter(
         Order.status.notin_([OrderStatus.DELIVERED, OrderStatus.CANCELLED, OrderStatus.REJECTED])
-    ).count()
+    ).scalar() or 0
 
-    delivered_orders = db.query(Order).filter(Order.status == OrderStatus.DELIVERED).all()
-    total_revenue = sum(o.total_paise for o in delivered_orders)
+    total_revenue = db.query(func.coalesce(func.sum(Order.total_paise), 0)).filter(Order.status == OrderStatus.DELIVERED).scalar() or 0
 
     return AdminMetricsResponse(
         total_users=total_users,
@@ -44,7 +43,7 @@ def get_admin_metrics(
         pending_partner_approvals=pending_partners,
         total_orders=total_orders,
         active_orders=active_orders,
-        total_revenue_paise=total_revenue
+        total_revenue_paise=int(total_revenue)
     )
 
 @router.get("/analytics", response_model=AdminAnalyticsResponse)
@@ -77,9 +76,9 @@ def get_admin_analytics(
     promo_discount = sum(o.discount_paise for o in delivered)
     net_rev = sum(o.total_paise for o in delivered)
 
-    total_rests = db.query(Restaurant).filter(Restaurant.is_active == True).count()
-    active_riders = db.query(DeliveryPartner).filter(DeliveryPartner.is_online == True).count()
-    total_custs = db.query(User).filter(User.role == UserRole.CUSTOMER).count()
+    total_rests = db.query(func.count(Restaurant.id)).filter(Restaurant.is_active == True).scalar() or 0
+    active_riders = db.query(func.count(DeliveryPartner.id)).filter(DeliveryPartner.is_online == True).scalar() or 0
+    total_custs = db.query(func.count(User.id)).filter(User.role == UserRole.CUSTOMER).scalar() or 0
 
     return AdminAnalyticsResponse(
         timeframe=timeframe,

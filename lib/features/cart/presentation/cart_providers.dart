@@ -21,6 +21,16 @@ final availableCouponsProvider = FutureProvider.family<List<CouponModel>, int?>(
   return repo.getAvailableCoupons(restaurantId: restaurantId);
 });
 
+final publicCouponsProvider = FutureProvider<List<CouponModel>>((ref) async {
+  final apiClient = ref.watch(apiClientProvider);
+  try {
+    final response = await apiClient.dio.get('/coupons/public');
+    return (response.data as List).map((e) => CouponModel.fromJson(e)).toList();
+  } catch (_) {
+    return [];
+  }
+});
+
 class CartNotifier extends StateNotifier<AsyncValue<void>> {
   final CartRepository _repository;
   final Ref _ref;

@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/currency_formatter.dart';
+import '../../../core/widgets/error_and_empty_views.dart';
 import '../../auth/presentation/profile_screen.dart';
 import '../../cart/presentation/cart_providers.dart';
 import '../../cart/presentation/coupon_bottom_sheet.dart';
@@ -65,7 +67,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to place order: $e'),
+            content: Text(ApiClient.formatError(e)),
             backgroundColor: AppColors.error,
             behavior: SnackBarBehavior.floating,
           ),
@@ -125,12 +127,15 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             final discount = couponDiscount > 0 ? couponDiscount : cart.discountPaise;
             final totalPayable = (subtotal + deliveryFee + tax - discount).clamp(0, 99999999);
 
-            return SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 760),
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                   // Delivery Address Section
                   Text(
                     'Delivery Address',
@@ -179,8 +184,31 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                       }
                       return const SizedBox.shrink();
                     },
-                    loading: () => const SizedBox.shrink(),
-                    error: (_, _) => const SizedBox.shrink(),
+                    loading: () => const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8.0),
+                      child: LinearProgressIndicator(
+                        color: AppColors.primary,
+                        backgroundColor: Colors.transparent,
+                        minHeight: 2,
+                      ),
+                    ),
+                    error: (err, _) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12.0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Could not load saved addresses (${ApiClient.formatError(err)})',
+                              style: const TextStyle(fontSize: 12, color: AppColors.error),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => ref.invalidate(userAddressesProvider),
+                            child: const Text('Retry', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
 
                   TextFormField(
@@ -383,7 +411,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                     child: ElevatedButton(
                       onPressed: _isSubmitting ? null : _placeOrder,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
+                        backgroundColor: AppColors.darkAction,
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
@@ -404,10 +432,15 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   const SizedBox(height: 24),
                 ],
               ),
-            );
+            ),
+          ),
+        );
           },
           loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-          error: (err, stack) => Center(child: Text('Error: $err')),
+          error: (err, stack) => CustomErrorView(
+            message: 'Failed to load checkout: ${ApiClient.formatError(err)}',
+            onRetry: () => ref.refresh(cartSummaryProvider),
+          ),
         ),
       ),
     );

@@ -23,6 +23,7 @@ def get_restaurants(
     max_delivery_time: Optional[int] = Query(None, description="Filter max delivery time in minutes"),
     open_now: Optional[bool] = Query(None, description="Filter currently open restaurants"),
     has_offers: Optional[bool] = Query(None, description="Filter restaurants with active discounts"),
+    max_price_paise: Optional[int] = Query(None, description="Filter restaurants with food items up to this price in paise"),
     sort_by: Optional[str] = Query("recommended", description="Sort by: recommended, rating, delivery_time, price"),
     db: Session = Depends(get_db)
 ):
@@ -52,6 +53,13 @@ def get_restaurants(
 
     if open_now:
         q = q.filter(Restaurant.is_open == True)
+
+    if max_price_paise is not None:
+        budget_restaurant_ids = db.query(FoodItem.restaurant_id).filter(
+            FoodItem.price_paise <= max_price_paise,
+            FoodItem.is_available == True
+        ).distinct().subquery()
+        q = q.filter(Restaurant.id.in_(budget_restaurant_ids))
 
     if is_veg:
         veg_restaurants = db.query(FoodItem.restaurant_id).filter(

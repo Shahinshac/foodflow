@@ -4,7 +4,10 @@ import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/error_and_empty_views.dart';
+import '../../../core/widgets/motion_system.dart';
 import 'restaurant_providers.dart';
 
 class FavoritesScreen extends ConsumerWidget {
@@ -23,41 +26,24 @@ class FavoritesScreen extends ConsumerWidget {
         backgroundColor: isDark ? AppColors.surfaceDark : Colors.white,
         surfaceTintColor: Colors.transparent,
       ),
-      body: favoritesAsync.when(
-        data: (restaurants) {
-          if (restaurants.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(28),
-                      decoration: BoxDecoration(
-                        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(Icons.favorite_border_rounded, size: 72, color: theme.colorScheme.onSurface.withValues(alpha: 0.3)),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      'No favorite restaurants yet',
-                      style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Tap the heart icon on any restaurant to save your favorite dining spots here for fast access!',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
+      body: RefreshIndicator(
+        onRefresh: () async => ref.refresh(favoriteRestaurantsProvider),
+        color: AppColors.primary,
+        child: favoritesAsync.when(
+          data: (restaurants) {
+            if (restaurants.isEmpty) {
+              return ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 100),
+                  CustomEmptyView(
+                    icon: Icons.favorite_border_rounded,
+                    title: 'No favorite restaurants yet',
+                    description: 'Tap the heart icon on any restaurant to save your favorite dining spots here for fast access!',
+                  ),
+                ],
+              );
+            }
 
           return ListView.separated(
             padding: const EdgeInsets.all(16),
@@ -177,9 +163,22 @@ class FavoritesScreen extends ConsumerWidget {
             },
           );
         },
-        loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-        error: (err, _) => Center(child: Text('Error: $err')),
+        loading: () => const Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Column(
+            children: [
+              FoodShimmerLoading(width: double.infinity, height: 180, borderRadius: 22),
+              SizedBox(height: 16),
+              FoodShimmerLoading(width: double.infinity, height: 180, borderRadius: 22),
+            ],
+          ),
+        ),
+        error: (err, _) => CustomErrorView(
+          message: 'Failed to load favorite restaurants: ${ApiClient.formatError(err)}',
+          onRetry: () => ref.invalidate(favoriteRestaurantsProvider),
+        ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

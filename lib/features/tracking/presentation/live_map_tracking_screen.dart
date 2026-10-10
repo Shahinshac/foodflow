@@ -9,6 +9,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/error_and_empty_views.dart';
 import '../../auth/presentation/auth_providers.dart';
 
 class LiveTrackingData {
@@ -309,15 +310,9 @@ class _LiveMapTrackingScreenState extends ConsumerState<LiveMapTrackingScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
           : _errorMessage != null
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text('Error: $_errorMessage'),
-                      const SizedBox(height: 12),
-                      ElevatedButton(onPressed: _fetchSnapshot, child: const Text('Retry')),
-                    ],
-                  ),
+              ? CustomErrorView(
+                  message: 'Failed to connect to live tracking service. $_errorMessage',
+                  onRetry: _fetchSnapshot,
                 )
               : _buildLiveTrackingBody(),
     );

@@ -24,7 +24,15 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 # CORS Middleware configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost",
+        "http://localhost:8080",
+        "http://localhost:3000",
+        "http://127.0.0.1",
+        "http://127.0.0.1:8080",
+        "https://foodflow-api-lcxo.onrender.com",
+    ],
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?|https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

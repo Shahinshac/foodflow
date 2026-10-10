@@ -134,6 +134,7 @@ class FoodItemModel {
   final int id;
   final int restaurantId;
   final int? categoryId;
+  final String? categoryName;
   final String name;
   final String? description;
   final int pricePaise;
@@ -145,6 +146,7 @@ class FoodItemModel {
     required this.id,
     required this.restaurantId,
     this.categoryId,
+    this.categoryName,
     required this.name,
     this.description,
     required this.pricePaise,
@@ -158,6 +160,7 @@ class FoodItemModel {
       id: json['id'],
       restaurantId: json['restaurant_id'],
       categoryId: json['category_id'],
+      categoryName: json['category_name'] ?? json['category']?['name'],
       name: json['name'],
       description: json['description'],
       pricePaise: json['price_paise'],

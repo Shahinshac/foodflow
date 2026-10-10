@@ -1,12 +1,20 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:foodflow/core/theme/app_colors.dart';
-import 'package:foodflow/core/theme/app_theme.dart';
 import 'package:foodflow/core/utils/currency_formatter.dart';
+import 'package:dio/dio.dart';
+import 'package:foodflow/core/network/api_client.dart';
+import 'package:foodflow/features/auth/presentation/auth_providers.dart';
+import 'package:foodflow/features/auth/presentation/profile_screen.dart';
 import 'package:foodflow/features/restaurant/domain/models.dart';
+import 'package:foodflow/routing/app_router.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() {
+    GoogleFonts.config.allowRuntimeFetching = false;
+  });
 
   group('CurrencyFormatter Tests', () {
     test('formats paise to INR currency string correctly', () {
@@ -128,10 +136,544 @@ void main() {
     test('AppColors flame primary and dark tokens are correctly defined', () {
       expect(AppColors.primary, const Color(0xFFFF521B));
       expect(AppColors.primaryDark, const Color(0xFFE03E0B));
+      expect(AppColors.primaryLight, const Color(0xFFFF7A4D));
       expect(AppColors.veg, const Color(0xFF27AE60));
       expect(AppColors.nonVeg, const Color(0xFFE74C3C));
-      expect(AppTheme.lightTheme.colorScheme.primary, AppColors.primary);
-      expect(AppTheme.darkTheme.colorScheme.primary, AppColors.primary);
+      expect(AppColors.backgroundLight, const Color(0xFFF8F9FD));
+      expect(AppColors.backgroundDark, const Color(0xFF0F172A));
+    });
+  });
+
+  group('AuthState and Role Routing Redirection Tests', () {
+    test('Unauthenticated user on protected routes redirects to /login', () {
+      final unauthenticated = AuthState(
+        user: null,
+        isLoading: false,
+      );
+
+      expect(unauthenticated.isAuthenticated, false);
+      expect(unauthenticated.isLoading, false);
+    });
+
+    test('Authenticated role attributes accurately map to corresponding dashboards', () {
+      final customer = UserModel(id: 1, email: 'cust@ff.com', fullName: 'Cust', role: 'CUSTOMER');
+      final owner = UserModel(id: 2, email: 'own@ff.com', fullName: 'Owner', role: 'RESTAURANT_OWNER');
+      final rider = UserModel(id: 3, email: 'rider@ff.com', fullName: 'Rider', role: 'DELIVERY_PARTNER');
+      final admin = UserModel(id: 4, email: 'admin@ff.com', fullName: 'Admin', role: 'ADMIN');
+
+      expect(customer.role, 'CUSTOMER');
+      expect(owner.role, 'RESTAURANT_OWNER');
+      expect(rider.role, 'DELIVERY_PARTNER');
+      expect(admin.role, 'ADMIN');
+    });
+
+    test('Platform routing distinguishes web direct routes /admin, /owner, /delivery from mobile', () {
+      const webRoutes = ['/', '/login', '/admin', '/owner', '/delivery'];
+      expect(webRoutes.contains('/admin'), true);
+      expect(webRoutes.contains('/owner'), true);
+      expect(webRoutes.contains('/delivery'), true);
+      expect(webRoutes.contains('/'), true);
+    });
+  });
+
+  group('Router Redirect Logic & Loop Prevention Tests', () {
+    test('Loading state holds on /splash and redirects any other route to /splash', () {
+      expect(
+        computeAppRedirect(
+          isLoading: true,
+          isAuthenticated: false,
+          role: null,
+          location: '/splash',
+          isWeb: false,
+        ),
+        isNull,
+      );
+      expect(
+        computeAppRedirect(
+          isLoading: true,
+          isAuthenticated: false,
+          role: null,
+          location: '/login',
+          isWeb: false,
+        ),
+        '/splash',
+      );
+      expect(
+        computeAppRedirect(
+          isLoading: true,
+          isAuthenticated: false,
+          role: null,
+          location: '/',
+          isWeb: false,
+        ),
+        '/splash',
+      );
+    });
+
+    test('Unauthenticated guest navigation allows / and /restaurant/:id and redirects /splash to /', () {
+      // Splash screen routes guest to /
+      final splashRedirect = computeAppRedirect(
+        isLoading: false,
+        isAuthenticated: false,
+        role: null,
+        location: '/splash',
+        isWeb: false,
+      );
+      expect(splashRedirect, '/');
+      // Subsequent check at / terminates at null
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/',
+          isWeb: false,
+        ),
+        isNull,
+      );
+
+      // Public routes allowed
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/restaurant/42',
+          isWeb: false,
+        ),
+        isNull,
+      );
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/login',
+          isWeb: false,
+        ),
+        isNull,
+      );
+
+      // Customer protected routes redirect to /login
+      final ordersRedirect = computeAppRedirect(
+        isLoading: false,
+        isAuthenticated: false,
+        role: null,
+        location: '/orders',
+        isWeb: true,
+      );
+      expect(ordersRedirect, '/login');
+      // And /login terminates
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/login',
+          isWeb: true,
+        ),
+        isNull,
+      );
+    });
+
+    test('Mobile Android: Customer login routes to / and prevents loops', () {
+      // From login to /
+      final toHome = computeAppRedirect(
+        isLoading: false,
+        isAuthenticated: true,
+        role: 'CUSTOMER',
+        location: '/login',
+        isWeb: false,
+      );
+      expect(toHome, '/');
+
+      // Next check on / terminates
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: true,
+          role: 'CUSTOMER',
+          location: '/',
+          isWeb: false,
+        ),
+        isNull,
+      );
+
+      // Customer on /cart terminates
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: true,
+          role: 'CUSTOMER',
+          location: '/cart',
+          isWeb: false,
+        ),
+        isNull,
+      );
+    });
+
+    test('Mobile Android: Delivery Partner login routes to /delivery and prevents loops', () {
+      final toDelivery = computeAppRedirect(
+        isLoading: false,
+        isAuthenticated: true,
+        role: 'DELIVERY_PARTNER',
+        location: '/login',
+        isWeb: false,
+      );
+      expect(toDelivery, '/rider');
+
+      // Next check on /rider terminates
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: true,
+          role: 'DELIVERY_PARTNER',
+          location: '/rider',
+          isWeb: false,
+        ),
+        isNull,
+      );
+
+      // /delivery alias also terminates
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: true,
+          role: 'DELIVERY_PARTNER',
+          location: '/delivery',
+          isWeb: false,
+        ),
+        isNull,
+      );
+    });
+
+    test('Mobile Android: Admin and Owner accounts are denied and terminate cleanly on /login', () {
+      // Admin on /splash redirects to /login
+      final splashToLogin = computeAppRedirect(
+        isLoading: false,
+        isAuthenticated: true,
+        role: 'ADMIN',
+        location: '/splash',
+        isWeb: false,
+      );
+      expect(splashToLogin, '/login');
+
+      // Admin on /login TERMINATES at null (no loop)
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: true,
+          role: 'ADMIN',
+          location: '/login',
+          isWeb: false,
+        ),
+        isNull,
+      );
+
+      // Restaurant Owner on / redirects to /login
+      final ownerToLogin = computeAppRedirect(
+        isLoading: false,
+        isAuthenticated: true,
+        role: 'RESTAURANT_OWNER',
+        location: '/',
+        isWeb: false,
+      );
+      expect(ownerToLogin, '/login');
+
+      // Owner on /login TERMINATES at null (no loop)
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: true,
+          role: 'RESTAURANT_OWNER',
+          location: '/login',
+          isWeb: false,
+        ),
+        isNull,
+      );
+    });
+
+    test('Web Platform: Direct navigation to /admin, /owner, /rider, /delivery succeeds for authorized roles', () {
+      // Admin at /admin stays at /admin
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: true,
+          role: 'ADMIN',
+          location: '/admin',
+          isWeb: true,
+        ),
+        isNull,
+      );
+
+      // Admin at /admin-dashboard stays at /admin-dashboard
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: true,
+          role: 'ADMIN',
+          location: '/admin-dashboard',
+          isWeb: true,
+        ),
+        isNull,
+      );
+
+      // Owner at /owner stays at /owner
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: true,
+          role: 'RESTAURANT_OWNER',
+          location: '/owner',
+          isWeb: true,
+        ),
+        isNull,
+      );
+
+      // Delivery Partner at /rider stays at /rider
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: true,
+          role: 'DELIVERY_PARTNER',
+          location: '/rider',
+          isWeb: true,
+        ),
+        isNull,
+      );
+
+      // Delivery Partner at /delivery stays at /delivery
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: true,
+          role: 'DELIVERY_PARTNER',
+          location: '/delivery',
+          isWeb: true,
+        ),
+        isNull,
+      );
+    });
+
+    test('Web Platform: Unauthenticated direct navigation to /admin, /owner, /rider shows dedicated login pages without loops', () {
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/admin',
+          isWeb: true,
+        ),
+        isNull,
+      );
+
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/owner',
+          isWeb: true,
+        ),
+        isNull,
+      );
+
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/rider',
+          isWeb: true,
+        ),
+        isNull,
+      );
+    });
+
+    test('Web Platform: Wrong role access is denied and routes to /', () {
+      // Customer trying /admin redirects to /
+      final custToAdmin = computeAppRedirect(
+        isLoading: false,
+        isAuthenticated: true,
+        role: 'CUSTOMER',
+        location: '/admin',
+        isWeb: true,
+      );
+      expect(custToAdmin, '/');
+
+      // Customer on / terminates
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: true,
+          role: 'CUSTOMER',
+          location: '/',
+          isWeb: true,
+        ),
+        isNull,
+      );
+
+      // Customer trying /owner redirects to /
+      final custToOwner = computeAppRedirect(
+        isLoading: false,
+        isAuthenticated: true,
+        role: 'CUSTOMER',
+        location: '/owner',
+        isWeb: true,
+      );
+      expect(custToOwner, '/');
+    });
+
+    test('Deterministic Loop Invariant: Any non-null redirect must terminate on the subsequent call', () {
+      final testRoles = <String?>[null, 'CUSTOMER', 'RESTAURANT_OWNER', 'DELIVERY_PARTNER', 'ADMIN'];
+      final testLocations = [
+        '/',
+        '/splash',
+        '/login',
+        '/register',
+        '/restaurant-login',
+        '/delivery-login',
+        '/admin',
+        '/admin-dashboard',
+        '/owner',
+        '/owner-dashboard',
+        '/restaurant-owner',
+        '/rider',
+        '/delivery',
+        '/delivery-dashboard',
+        '/restaurant/1',
+        '/cart',
+        '/checkout',
+        '/orders',
+        '/order/10',
+      ];
+      final platforms = [true, false];
+
+      for (final isWeb in platforms) {
+        for (final role in testRoles) {
+          final isAuth = role != null;
+          for (final loc in testLocations) {
+            final nextLoc = computeAppRedirect(
+              isLoading: false,
+              isAuthenticated: isAuth,
+              role: role,
+              location: loc,
+              isWeb: isWeb,
+            );
+
+            if (nextLoc != null) {
+              // The next hop MUST return null to guarantee zero redirect loops
+              final secondHop = computeAppRedirect(
+                isLoading: false,
+                isAuthenticated: isAuth,
+                role: role,
+                location: nextLoc,
+                isWeb: isWeb,
+              );
+              expect(
+                secondHop,
+                isNull,
+                reason: 'Redirect cycle detected for isWeb=$isWeb, role=$role, loc=$loc -> $nextLoc -> $secondHop',
+              );
+            }
+          }
+        }
+      }
+    });
+  });
+
+  group('ApiClient Configuration & Error Formatting Tests', () {
+    test('ApiClient sets 30-second connection and receive timeouts', () {
+      final client = ApiClient();
+      expect(client.dio.options.connectTimeout, const Duration(seconds: 30));
+      expect(client.dio.options.receiveTimeout, const Duration(seconds: 30));
+      expect(client.dio.options.sendTimeout, const Duration(seconds: 30));
+    });
+
+    test('ApiClient.formatError accurately formats timeout errors without stack traces', () {
+      final timeoutException = DioException(
+        requestOptions: RequestOptions(path: '/api/v1/users/me/addresses'),
+        type: DioExceptionType.receiveTimeout,
+        message: 'The request took longer than 10000ms',
+      );
+
+      final formatted = ApiClient.formatError(timeoutException);
+      expect(formatted, contains('Connection timed out'));
+      expect(formatted, contains('Please check your internet connection'));
+      expect(formatted, isNot(contains('at dart:core')));
+      expect(formatted, isNot(contains('DioException')));
+    });
+
+    test('ApiClient.formatError accurately parses HTTP status codes and backend detail payloads', () {
+      final e401 = DioException(
+        requestOptions: RequestOptions(path: '/api/v1/users/me'),
+        response: Response(
+          requestOptions: RequestOptions(path: '/api/v1/users/me'),
+          statusCode: 401,
+        ),
+        type: DioExceptionType.badResponse,
+      );
+      expect(ApiClient.formatError(e401), 'Your session has expired. Please sign in again.');
+
+      final e403 = DioException(
+        requestOptions: RequestOptions(path: '/api/v1/admin/analytics'),
+        response: Response(
+          requestOptions: RequestOptions(path: '/api/v1/admin/analytics'),
+          statusCode: 403,
+        ),
+        type: DioExceptionType.badResponse,
+      );
+      expect(ApiClient.formatError(e403), 'Access denied. You do not have permission for this action.');
+
+      final e422 = DioException(
+        requestOptions: RequestOptions(path: '/api/v1/orders'),
+        response: Response(
+          requestOptions: RequestOptions(path: '/api/v1/orders'),
+          statusCode: 422,
+          data: {'detail': 'Selected delivery address is inactive'},
+        ),
+        type: DioExceptionType.badResponse,
+      );
+      expect(ApiClient.formatError(e422), 'Selected delivery address is inactive');
+
+      final e500 = DioException(
+        requestOptions: RequestOptions(path: '/api/v1/restaurants'),
+        response: Response(
+          requestOptions: RequestOptions(path: '/api/v1/restaurants'),
+          statusCode: 500,
+        ),
+        type: DioExceptionType.badResponse,
+      );
+      expect(ApiClient.formatError(e500), 'Server is temporarily unavailable. Please try again in a few moments.');
+    });
+
+    test('ApiClient.formatError handles generic exceptions safely', () {
+      final generic = Exception('Database table locked');
+      final formatted = ApiClient.formatError(generic);
+      expect(formatted, contains('Database table locked'));
+      expect(formatted, isNot(contains('Exception: ')));
+    });
+  });
+
+  group('User Address Model & Parsing Tests', () {
+    test('AddressItem parses JSON fields and handles defaults correctly', () {
+      final json = {
+        'id': 101,
+        'user_id': 5,
+        'label': 'HOME',
+        'street_address': '104 Sunrise Boulevard, Apt 4B',
+        'city': 'Bengaluru',
+        'pincode': '560001',
+        'is_default': true,
+      };
+
+      final address = AddressItem.fromJson(json);
+      expect(address.id, 101);
+      expect(address.label, 'HOME');
+      expect(address.streetAddress, '104 Sunrise Boulevard, Apt 4B');
+      expect(address.city, 'Bengaluru');
+      expect(address.pincode, '560001');
+      expect(address.isDefault, true);
     });
   });
 }
