@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -13,6 +14,7 @@ import '../../../core/widgets/desktop_navigation_bar.dart';
 import '../../../core/widgets/food_category_card.dart';
 import '../../../core/widgets/budget_food_finder.dart';
 import '../../../core/widgets/special_offers_banner.dart';
+import '../../../core/widgets/pwa_install_guide_dialog.dart';
 import '../../auth/presentation/profile_screen.dart';
 import '../../cart/presentation/cart_providers.dart';
 import '../../order/presentation/orders_list_screen.dart';
@@ -933,6 +935,12 @@ class _MobileHomeExploreViewState extends ConsumerState<_MobileHomeExploreView> 
           ],
         ),
         actions: [
+          if (kIsWeb)
+            IconButton(
+              icon: const Icon(Icons.download_rounded, color: AppColors.primary),
+              tooltip: 'Install App (PWA)',
+              onPressed: () => PwaInstallGuideDialog.show(context),
+            ),
           // Notification Bell
           Stack(
             alignment: Alignment.center,

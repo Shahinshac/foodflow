@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../theme/app_colors.dart';
 import '../../features/auth/presentation/auth_providers.dart';
 
@@ -223,10 +222,7 @@ class DashboardSidebar extends ConsumerWidget {
                 IconButton(
                   icon: const Icon(Icons.logout_rounded, size: 18, color: Color(0xFFEF4444)),
                   tooltip: 'Sign Out',
-                  onPressed: () {
-                    ref.read(authProvider.notifier).logout();
-                    context.go('/login');
-                  },
+                  onPressed: () => ref.read(authProvider.notifier).logout(),
                 ),
               ],
             ),

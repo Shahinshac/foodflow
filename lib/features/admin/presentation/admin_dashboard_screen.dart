@@ -56,6 +56,8 @@ class AdminDashboardScreen extends ConsumerStatefulWidget {
 
 class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final Set<int> _processingRestaurantIds = {};
+  final Set<int> _processingUserIds = {};
 
   @override
   void initState() {
@@ -70,6 +72,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
   }
 
   void _toggleUserActive(int userId) async {
+    setState(() => _processingUserIds.add(userId));
     try {
       final apiClient = ref.read(apiClientProvider);
       await apiClient.dio.put('/admin/users/$userId/toggle-active');
@@ -77,19 +80,141 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
       ref.invalidate(adminAnalyticsProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('User status updated'), backgroundColor: AppColors.veg),
+          const SnackBar(content: Text('User status updated successfully'), backgroundColor: AppColors.veg),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update user: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text('Failed to update user: ${ApiClient.formatError(e)}'), backgroundColor: AppColors.error),
         );
       }
+    } finally {
+      if (mounted) setState(() => _processingUserIds.remove(userId));
+    }
+  }
+
+  void _confirmDeleteUser(UserModel u) {
+    final authState = ref.read(authProvider);
+    if (authState.user?.id == u.id) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You cannot delete your own administrative account.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? AppColors.surfaceDark : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: const [
+            Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 28),
+            SizedBox(width: 10),
+            Text('Delete User Account', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Are you sure you want to delete the user account for:',
+              style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : const Color(0xFF374151)),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white.withValues(alpha: 0.05) : const Color(0xFFF9FAFB),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE5E7EB)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    u.fullName,
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: isDark ? Colors.white : const Color(0xFF111827)),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    u.email,
+                    style: TextStyle(fontSize: 13, color: isDark ? Colors.white60 : const Color(0xFF4B5563)),
+                  ),
+                  const SizedBox(height: 6),
+                  _buildRoleBadge(u.role, isDark),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Note: If this user has active orders, delivery history, or restaurants, their account will be safely archived and deactivated to protect financial and business integrity.',
+              style: TextStyle(fontSize: 11, color: isDark ? Colors.white54 : const Color(0xFF6B7280)),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            icon: const Icon(Icons.delete_forever_rounded, size: 18),
+            label: const Text('Confirm Delete', style: TextStyle(fontWeight: FontWeight.bold)),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _deleteUser(u.id, u.fullName);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _deleteUser(int userId, String userName) async {
+    setState(() => _processingUserIds.add(userId));
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      await apiClient.dio.delete('/admin/users/$userId');
+      ref.invalidate(adminUsersProvider);
+      ref.invalidate(adminAnalyticsProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('User "$userName" deleted / archived successfully.'),
+            backgroundColor: AppColors.veg,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete user: ${ApiClient.formatError(e)}'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _processingUserIds.remove(userId));
     }
   }
 
   void _approveRestaurant(int restaurantId) async {
+    setState(() => _processingRestaurantIds.add(restaurantId));
     try {
       final apiClient = ref.read(apiClientProvider);
       await apiClient.dio.put('/admin/restaurants/$restaurantId/approve');
@@ -97,19 +222,65 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
       ref.invalidate(adminAnalyticsProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Restaurant approved successfully!'), backgroundColor: AppColors.veg),
+          const SnackBar(content: Text('Restaurant approved and activated successfully!'), backgroundColor: AppColors.veg),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to approve: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text('Failed to approve restaurant: ${ApiClient.formatError(e)}'), backgroundColor: AppColors.error),
         );
       }
+    } finally {
+      if (mounted) setState(() => _processingRestaurantIds.remove(restaurantId));
     }
   }
 
+  void _confirmRejectRestaurant(RestaurantModel r) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: isDark ? AppColors.surfaceDark : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: const [
+            Icon(Icons.store_mall_directory_outlined, color: AppColors.error, size: 26),
+            SizedBox(width: 10),
+            Text('Reject Application?', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to reject the partner application for "${r.name}"? The store will not be visible to customers and cannot accept orders.',
+          style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : const Color(0xFF374151)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            icon: const Icon(Icons.cancel_rounded, size: 18),
+            label: const Text('Confirm Reject', style: TextStyle(fontWeight: FontWeight.bold)),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _rejectRestaurant(r.id);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   void _rejectRestaurant(int restaurantId) async {
+    setState(() => _processingRestaurantIds.add(restaurantId));
     try {
       final apiClient = ref.read(apiClientProvider);
       await apiClient.dio.put('/admin/restaurants/$restaurantId/reject');
@@ -117,19 +288,22 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
       ref.invalidate(adminAnalyticsProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Restaurant application rejected'), backgroundColor: AppColors.error),
+          const SnackBar(content: Text('Restaurant application rejected.'), backgroundColor: AppColors.error),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to reject: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text('Failed to reject: ${ApiClient.formatError(e)}'), backgroundColor: AppColors.error),
         );
       }
+    } finally {
+      if (mounted) setState(() => _processingRestaurantIds.remove(restaurantId));
     }
   }
 
   void _toggleRestaurantActive(int restaurantId) async {
+    setState(() => _processingRestaurantIds.add(restaurantId));
     try {
       final apiClient = ref.read(apiClientProvider);
       await apiClient.dio.put('/admin/restaurants/$restaurantId/toggle-active');
@@ -137,15 +311,17 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
       ref.invalidate(adminAnalyticsProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Restaurant status updated'), backgroundColor: AppColors.veg),
+          const SnackBar(content: Text('Restaurant store status updated.'), backgroundColor: AppColors.veg),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to update status: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text('Failed to update status: ${ApiClient.formatError(e)}'), backgroundColor: AppColors.error),
         );
       }
+    } finally {
+      if (mounted) setState(() => _processingRestaurantIds.remove(restaurantId));
     }
   }
 
@@ -1120,14 +1296,17 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Partner Stores', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                      const Text(
+                        'Partner Stores & Approvals',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                      ),
                       ElevatedButton.icon(
                         icon: const Icon(Icons.add_business_rounded, size: 16),
                         label: const Text('Add Restaurant', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primary,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                         onPressed: _showCreateRestaurantDialog,
@@ -1176,99 +1355,200 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
                         itemCount: restaurants.length,
                         itemBuilder: (context, index) {
                           final r = restaurants[index];
+                          final isDark = Theme.of(context).brightness == Brightness.dark;
+                          final isProcessing = _processingRestaurantIds.contains(r.id);
+
                           return Container(
                             margin: const EdgeInsets.only(bottom: 12),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: isDark ? AppColors.surfaceDark : Colors.white,
                               borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: isDark ? AppColors.borderDark : const Color(0xFFE5E7EB),
+                                width: 1,
+                              ),
                               boxShadow: AppColors.softShadow,
                             ),
                             child: Padding(
-                              padding: const EdgeInsets.all(12),
+                              padding: const EdgeInsets.all(14),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Row(
-                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       ClipRRect(
-                                        borderRadius: BorderRadius.circular(10),
+                                        borderRadius: BorderRadius.circular(12),
                                         child: CachedNetworkImage(
                                           imageUrl: AppConstants.resolveImageUrl(r.imageUrl),
-                                          width: 54,
-                                          height: 54,
+                                          width: 58,
+                                          height: 58,
                                           fit: BoxFit.cover,
+                                          errorWidget: (context, url, error) => Container(
+                                            width: 58,
+                                            height: 58,
+                                            color: isDark ? Colors.white10 : Colors.grey.shade200,
+                                            child: const Icon(Icons.storefront_rounded, color: AppColors.primary),
+                                          ),
                                         ),
                                       ),
-                                      const SizedBox(width: 12),
+                                      const SizedBox(width: 14),
                                       Expanded(
                                         child: Column(
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
-                                            Text(r.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                            const SizedBox(height: 2),
-                                            Text('${r.cuisine} • Rating: ${r.rating} ⭐', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                                            const SizedBox(height: 4),
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: r.isApproved
-                                                    ? (r.isActive ? AppColors.veg.withValues(alpha: 0.15) : Colors.grey.withValues(alpha: 0.15))
-                                                    : Colors.orange.withValues(alpha: 0.15),
-                                                borderRadius: BorderRadius.circular(6),
-                                              ),
-                                              child: Text(
-                                                r.isApproved ? (r.isActive ? 'ACTIVE & APPROVED' : 'PAUSED') : 'PENDING REVIEW',
-                                                style: TextStyle(
-                                                  color: r.isApproved ? (r.isActive ? AppColors.veg : Colors.grey) : Colors.orange.shade800,
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 10,
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Text(
+                                                    r.name,
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.w800,
+                                                      fontSize: 16,
+                                                      color: isDark ? Colors.white : const Color(0xFF111827),
+                                                    ),
+                                                  ),
                                                 ),
+                                                const SizedBox(width: 8),
+                                                // Status Badge
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                  decoration: BoxDecoration(
+                                                    color: r.isApproved
+                                                        ? (r.isActive ? const Color(0xFFDCFCE7) : const Color(0xFFF3F4F6))
+                                                        : const Color(0xFFFEF3C7),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                    border: Border.all(
+                                                      color: r.isApproved
+                                                          ? (r.isActive ? const Color(0xFF86EFAC) : const Color(0xFFD1D5DB))
+                                                          : const Color(0xFFFDE68A),
+                                                    ),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Icon(
+                                                        r.isApproved
+                                                            ? (r.isActive ? Icons.check_circle_rounded : Icons.pause_circle_rounded)
+                                                            : Icons.pending_actions_rounded,
+                                                        size: 12,
+                                                        color: r.isApproved
+                                                            ? (r.isActive ? const Color(0xFF15803D) : const Color(0xFF4B5563))
+                                                            : const Color(0xFFB45309),
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      Text(
+                                                        r.isApproved ? (r.isActive ? 'ACTIVE & APPROVED' : 'STORE PAUSED') : 'PENDING REVIEW',
+                                                        style: TextStyle(
+                                                          color: r.isApproved
+                                                              ? (r.isActive ? const Color(0xFF15803D) : const Color(0xFF4B5563))
+                                                              : const Color(0xFFB45309),
+                                                          fontWeight: FontWeight.w800,
+                                                          fontSize: 10,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '${r.cuisine} • Rating: ${r.rating} ⭐ • Est. ${r.estimatedDeliveryTime}',
+                                              style: TextStyle(
+                                                color: isDark ? Colors.white70 : const Color(0xFF4B5563),
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w500,
                                               ),
                                             ),
+                                            if (r.addressText != null && r.addressText!.isNotEmpty) ...[
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                r.addressText!,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  color: isDark ? Colors.white54 : const Color(0xFF6B7280),
+                                                  fontSize: 11,
+                                                ),
+                                              ),
+                                            ],
                                           ],
                                         ),
                                       ),
                                     ],
                                   ),
+                                  const SizedBox(height: 12),
+                                  Divider(height: 1, color: isDark ? AppColors.borderDark : const Color(0xFFF3F4F6)),
                                   const SizedBox(height: 10),
-                                  const Divider(height: 1),
-                                  const SizedBox(height: 8),
+                                  // Action Buttons Area
                                   Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      if (!r.isApproved) ...[
-                                        OutlinedButton(
-                                          style: OutlinedButton.styleFrom(
-                                            foregroundColor: AppColors.error,
-                                            side: const BorderSide(color: AppColors.error),
-                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                          ),
-                                          onPressed: () => _rejectRestaurant(r.id),
-                                          child: const Text('Reject', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                      Text(
+                                        r.isApproved ? 'Store ID: #${r.id}' : 'Store ID: #${r.id} • Requires Approval',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                          color: isDark ? Colors.white54 : const Color(0xFF6B7280),
                                         ),
-                                        const SizedBox(width: 8),
-                                        ElevatedButton(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: AppColors.veg,
-                                            foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                                          ),
-                                          onPressed: () => _approveRestaurant(r.id),
-                                          child: const Text('Approve Store', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                      ),
+                                      if (isProcessing)
+                                        const SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(strokeWidth: 2.5, color: AppColors.primary),
+                                        )
+                                      else
+                                        Wrap(
+                                          spacing: 8,
+                                          runSpacing: 8,
+                                          crossAxisAlignment: WrapCrossAlignment.center,
+                                          children: [
+                                            if (!r.isApproved) ...[
+                                              OutlinedButton.icon(
+                                                style: OutlinedButton.styleFrom(
+                                                  foregroundColor: AppColors.error,
+                                                  side: const BorderSide(color: AppColors.error, width: 1.2),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                                ),
+                                                icon: const Icon(Icons.close_rounded, size: 16),
+                                                onPressed: () => _confirmRejectRestaurant(r),
+                                                label: const Text('Reject', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                                              ),
+                                              ElevatedButton.icon(
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: AppColors.veg,
+                                                  foregroundColor: Colors.white,
+                                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                                  elevation: 0,
+                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                                ),
+                                                icon: const Icon(Icons.check_circle_outline_rounded, size: 16),
+                                                onPressed: () => _approveRestaurant(r.id),
+                                                label: const Text('Approve Store', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                                              ),
+                                            ] else ...[
+                                              Text(
+                                                r.isActive ? 'Accepting Orders' : 'Store Disabled',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: r.isActive ? AppColors.veg : (isDark ? Colors.white60 : const Color(0xFF6B7280)),
+                                                ),
+                                              ),
+                                              Tooltip(
+                                                message: r.isActive ? 'Suspend Restaurant' : 'Activate Restaurant',
+                                                child: Switch(
+                                                  value: r.isActive,
+                                                  activeThumbColor: AppColors.veg,
+                                                  onChanged: (v) => _toggleRestaurantActive(r.id),
+                                                ),
+                                              ),
+                                            ],
+                                          ],
                                         ),
-                                      ] else ...[
-                                        Text(
-                                          r.isActive ? 'Accepting Orders' : 'Store Disabled',
-                                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Switch(
-                                          value: r.isActive,
-                                          activeThumbColor: AppColors.veg,
-                                          onChanged: (v) => _toggleRestaurantActive(r.id),
-                                        ),
-                                      ],
                                     ],
                                   ),
                                 ],
@@ -1294,7 +1574,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
             ),
           ),
 
-          // TAB 4: USERS DIRECTORY
+          // TAB 4: USERS DIRECTORY & MANAGEMENT
           RefreshIndicator(
             onRefresh: () async => ref.invalidate(adminUsersProvider),
             color: AppColors.primary,
@@ -1305,14 +1585,17 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('User Accounts', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                      const Text(
+                        'User Accounts Management',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                      ),
                       ElevatedButton.icon(
                         icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
                         label: const Text('Add Account', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primary,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
                         onPressed: _showCreateUserDialog,
@@ -1331,43 +1614,167 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
                         );
                       }
 
+                      final currentAdminId = ref.watch(authProvider).user?.id;
+
                       return ListView.builder(
                         padding: const EdgeInsets.all(16.0),
                         itemCount: users.length,
                         itemBuilder: (context, index) {
                           final u = users[index];
+                          final isDark = Theme.of(context).brightness == Brightness.dark;
+                          final isCurrentAdmin = currentAdminId == u.id;
+                          final isProcessing = _processingUserIds.contains(u.id);
+
                           return Container(
-                            margin: const EdgeInsets.only(bottom: 10),
+                            margin: const EdgeInsets.only(bottom: 12),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: isDark ? AppColors.surfaceDark : Colors.white,
                               borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: isDark ? AppColors.borderDark : const Color(0xFFE5E7EB),
+                                width: 1,
+                              ),
                               boxShadow: AppColors.softShadow,
                             ),
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-                                child: Text(u.fullName.isNotEmpty ? u.fullName[0].toUpperCase() : 'U', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
-                              ),
-                              title: Text(u.fullName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                            child: Padding(
+                              padding: const EdgeInsets.all(14),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
-                                  Text(u.email, style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                                  const SizedBox(height: 2),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primary.withValues(alpha: 0.08),
-                                      borderRadius: BorderRadius.circular(4),
+                                  // User Avatar
+                                  CircleAvatar(
+                                    radius: 22,
+                                    backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+                                    child: Text(
+                                      u.fullName.isNotEmpty ? u.fullName[0].toUpperCase() : 'U',
+                                      style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w900, fontSize: 16),
                                     ),
-                                    child: Text(u.role, style: const TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.bold)),
                                   ),
+                                  const SizedBox(width: 14),
+
+                                  // User Details & Badges
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                u.fullName,
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.w800,
+                                                  fontSize: 15,
+                                                  color: isDark ? Colors.white : const Color(0xFF111827),
+                                                ),
+                                              ),
+                                            ),
+                                            if (isCurrentAdmin)
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: AppColors.primary.withValues(alpha: 0.12),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: const Text(
+                                                  'YOU (ACTIVE ADMIN)',
+                                                  style: TextStyle(
+                                                    color: AppColors.primary,
+                                                    fontSize: 9,
+                                                    fontWeight: FontWeight.w900,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          u.email,
+                                          style: TextStyle(
+                                            color: isDark ? Colors.white70 : const Color(0xFF4B5563),
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        if (u.phone != null && u.phone!.isNotEmpty) ...[
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'Phone: ${u.phone}',
+                                            style: TextStyle(
+                                              color: isDark ? Colors.white54 : const Color(0xFF6B7280),
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                        ],
+                                        const SizedBox(height: 6),
+                                        Wrap(
+                                          spacing: 6,
+                                          runSpacing: 4,
+                                          children: [
+                                            _buildRoleBadge(u.role, isDark),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                              decoration: BoxDecoration(
+                                                color: u.isActive
+                                                    ? (isDark ? const Color(0xFF064E3B).withValues(alpha: 0.4) : const Color(0xFFDCFCE7))
+                                                    : (isDark ? const Color(0xFF7F1D1D).withValues(alpha: 0.4) : const Color(0xFFFEE2E2)),
+                                                borderRadius: BorderRadius.circular(6),
+                                                border: Border.all(
+                                                  color: u.isActive
+                                                      ? (isDark ? const Color(0xFF15803D) : const Color(0xFFBBF7D0))
+                                                      : (isDark ? const Color(0xFFB91C1C) : const Color(0xFFFECACA)),
+                                                ),
+                                              ),
+                                              child: Text(
+                                                u.isActive ? '● Active' : '● Inactive',
+                                                style: TextStyle(
+                                                  color: u.isActive
+                                                      ? (isDark ? const Color(0xFF86EFAC) : const Color(0xFF15803D))
+                                                      : (isDark ? const Color(0xFFFCA5A5) : const Color(0xFFB91C1C)),
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w800,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+
+                                  const SizedBox(width: 8),
+
+                                  // Actions: Switch + Delete Button
+                                  if (isProcessing)
+                                    const SizedBox(
+                                      width: 24,
+                                      height: 24,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                                    )
+                                  else
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Tooltip(
+                                          message: u.isActive ? 'Deactivate User Account' : 'Activate User Account',
+                                          child: Switch(
+                                            value: u.isActive,
+                                            activeThumbColor: AppColors.veg,
+                                            onChanged: isCurrentAdmin ? null : (v) => _toggleUserActive(u.id),
+                                          ),
+                                        ),
+                                        IconButton(
+                                          icon: Icon(
+                                            Icons.delete_outline_rounded,
+                                            color: isCurrentAdmin ? Colors.grey.shade400 : AppColors.error,
+                                            size: 22,
+                                          ),
+                                          tooltip: isCurrentAdmin ? 'Cannot delete your own account' : 'Delete Account',
+                                          onPressed: isCurrentAdmin ? null : () => _confirmDeleteUser(u),
+                                        ),
+                                      ],
+                                    ),
                                 ],
-                              ),
-                              trailing: Switch(
-                                value: u.isActive,
-                                activeThumbColor: AppColors.veg,
-                                onChanged: (v) => _toggleUserActive(u.id),
                               ),
                             ),
                           );
@@ -1378,7 +1785,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
                       padding: const EdgeInsets.all(16),
                       itemCount: 5,
                       separatorBuilder: (_, _) => const SizedBox(height: 10),
-                      itemBuilder: (_, _) => const FoodShimmerLoading(width: double.infinity, height: 72),
+                      itemBuilder: (_, _) => const FoodShimmerLoading(width: double.infinity, height: 80),
                     ),
                     error: (err, _) => CustomErrorView(
                       message: 'Failed to load user accounts: ${ApiClient.formatError(err)}',
@@ -1388,9 +1795,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
                 ),
               ],
             ),
-            ),
-          ],
-        );
+          ),
+        ],
+      );
 
         if (isDesktop) {
           return Scaffold(
@@ -1489,6 +1896,56 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
     );
   }
 
+  Widget _buildRoleBadge(String role, bool isDark) {
+    Color bg;
+    Color text;
+    Color border;
+
+    switch (role.toUpperCase()) {
+      case 'ADMIN':
+        bg = isDark ? const Color(0xFF581C87).withValues(alpha: 0.4) : const Color(0xFFF3E8FF);
+        text = isDark ? const Color(0xFFD8B4FE) : const Color(0xFF7E22CE);
+        border = isDark ? const Color(0xFF7E22CE) : const Color(0xFFE9D5FF);
+        break;
+      case 'RESTAURANT_OWNER':
+      case 'OWNER':
+        bg = isDark ? const Color(0xFF78350F).withValues(alpha: 0.4) : const Color(0xFFFEF3C7);
+        text = isDark ? const Color(0xFFFDE68A) : const Color(0xFFB45309);
+        border = isDark ? const Color(0xFFB45309) : const Color(0xFFFDE68A);
+        break;
+      case 'DELIVERY_PARTNER':
+      case 'DRIVER':
+        bg = isDark ? const Color(0xFF0C4A6E).withValues(alpha: 0.4) : const Color(0xFFE0F2FE);
+        text = isDark ? const Color(0xFF7DD3FC) : const Color(0xFF0369A1);
+        border = isDark ? const Color(0xFF0369A1) : const Color(0xFFBAE6FD);
+        break;
+      case 'CUSTOMER':
+      default:
+        bg = isDark ? const Color(0xFF064E3B).withValues(alpha: 0.4) : const Color(0xFFDCFCE7);
+        text = isDark ? const Color(0xFF86EFAC) : const Color(0xFF15803D);
+        border = isDark ? const Color(0xFF15803D) : const Color(0xFFBBF7D0);
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: border, width: 1),
+      ),
+      child: Text(
+        role,
+        style: TextStyle(
+          color: text,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+
   Widget _filterChip(String key, String label, String current) {
     final isSelected = key == current;
     return ChoiceChip(
@@ -1501,11 +1958,14 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
   }
 
   Widget _buildMetricCard(String title, String val, IconData icon, Color color) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Container(
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDark ? AppColors.surfaceDark : Colors.white,
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: isDark ? AppColors.borderDark : const Color(0xFFE5E7EB)),
         boxShadow: AppColors.softShadow,
       ),
       child: Column(
@@ -1514,9 +1974,23 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> wit
         children: [
           Icon(icon, color: color, size: 24),
           const SizedBox(height: 8),
-          Text(title, style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 11,
+              color: isDark ? Colors.white70 : const Color(0xFF4B5563),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 4),
-          Text(val, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.black87)),
+          Text(
+            val,
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+              color: isDark ? Colors.white : const Color(0xFF111827),
+            ),
+          ),
         ],
       ),
     );

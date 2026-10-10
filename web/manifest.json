@@ -1,35 +1,68 @@
 {
-    "name": "foodflow",
-    "short_name": "foodflow",
-    "start_url": ".",
-    "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
-    "prefer_related_applications": false,
-    "icons": [
-        {
-            "src": "icons/Icon-192.png",
-            "sizes": "192x192",
-            "type": "image/png"
-        },
-        {
-            "src": "icons/Icon-512.png",
-            "sizes": "512x512",
-            "type": "image/png"
-        },
-        {
-            "src": "icons/Icon-maskable-192.png",
-            "sizes": "192x192",
-            "type": "image/png",
-            "purpose": "maskable"
-        },
-        {
-            "src": "icons/Icon-maskable-512.png",
-            "sizes": "512x512",
-            "type": "image/png",
-            "purpose": "maskable"
-        }
-    ]
+  "name": "FoodFlow",
+  "short_name": "FoodFlow",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0F172A",
+  "theme_color": "#FF5722",
+  "description": "FoodFlow - Food Delivery & Restaurant Platform",
+  "orientation": "any",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "icons/Icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/Icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/Icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/Icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Home",
+      "short_name": "Home",
+      "description": "Browse dishes and restaurants",
+      "url": "/",
+      "icons": [{ "src": "icons/Icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Admin Portal",
+      "short_name": "Admin",
+      "description": "Admin login & dashboard",
+      "url": "/admin",
+      "icons": [{ "src": "icons/Icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Restaurant Portal",
+      "short_name": "Owner",
+      "description": "Restaurant partner login & menu management",
+      "url": "/owner",
+      "icons": [{ "src": "icons/Icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Delivery Portal",
+      "short_name": "Rider",
+      "description": "Delivery partner rider login & orders",
+      "url": "/rider",
+      "icons": [{ "src": "icons/Icon-192.png", "sizes": "192x192" }]
+    }
+  ]
 }

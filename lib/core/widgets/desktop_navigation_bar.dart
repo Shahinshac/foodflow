@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../theme/app_colors.dart';
 import '../../features/auth/presentation/auth_providers.dart';
 import '../../features/cart/presentation/cart_providers.dart';
+import 'pwa_install_guide_dialog.dart';
 
 class DesktopNavigationBar extends ConsumerWidget {
   final VoidCallback? onOffersTap;
@@ -168,6 +169,35 @@ class DesktopNavigationBar extends ConsumerWidget {
                           color: isDark ? Colors.white54 : const Color(0xFF6B7280),
                         ),
                       ],
+                    ),
+                  ),
+
+                  const SizedBox(width: 12),
+
+                  // Install App Button
+                  Tooltip(
+                    message: 'Install FoodFlow App (iOS / Windows PWA)',
+                    child: OutlinedButton.icon(
+                      onPressed: () => PwaInstallGuideDialog.show(context),
+                      icon: const Icon(Icons.download_rounded, size: 16, color: AppColors.primary),
+                      label: Text(
+                        'Install App',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: isDark ? Colors.white70 : const Color(0xFF374151),
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        side: BorderSide(
+                          color: isDark ? AppColors.borderDark : const Color(0xFFE5E7EB),
+                          width: 1,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
                     ),
                   ),
 

@@ -156,6 +156,57 @@ def toggle_user_active(
     db.refresh(target_user)
     return target_user
 
+@router.delete("/users/{user_id}")
+def delete_user_by_admin(
+    user_id: int,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    if current_user.id == user_id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own administrative account")
+
+    target_user = db.query(User).filter(User.id == user_id).first()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Prevent deleting the last Super Admin
+    if target_user.role == UserRole.ADMIN:
+        admin_count = db.query(func.count(User.id)).filter(User.role == UserRole.ADMIN, User.is_active == True).scalar() or 0
+        if admin_count <= 1:
+            raise HTTPException(status_code=400, detail="Cannot delete the last active Super Administrator")
+
+    # Check for dependent business records: orders, owned restaurants, or active delivery profile
+    has_orders = db.query(func.count(Order.id)).filter(Order.user_id == user_id).scalar() > 0
+    has_restaurants = db.query(func.count(Restaurant.id)).filter(Restaurant.owner_id == user_id).scalar() > 0
+    has_delivery_partner = db.query(func.count(DeliveryPartner.id)).filter(DeliveryPartner.user_id == user_id).scalar() > 0
+
+    if has_orders or has_restaurants or has_delivery_partner:
+        # Safe deactivation & soft deletion to preserve financial history and order integrity
+        target_user.is_active = False
+        target_user.is_approved = False
+        deleted_label = f"deleted_{int(datetime.utcnow().timestamp())}_{target_user.email}"
+        target_user.email = deleted_label[:120]
+        
+        log = AuditLog(
+            admin_id=current_user.id,
+            action="SOFT_DELETE_USER",
+            details=f"Deactivated and archived user ID {user_id} due to existing dependent business records."
+        )
+        db.add(log)
+        db.commit()
+        return {"success": True, "message": "User deactivated and archived successfully", "soft_deleted": True}
+    else:
+        # Hard delete if clean record
+        db.delete(target_user)
+        log = AuditLog(
+            admin_id=current_user.id,
+            action="DELETE_USER",
+            details=f"Permanently deleted user {target_user.email} (ID {user_id})"
+        )
+        db.add(log)
+        db.commit()
+        return {"success": True, "message": "User permanently deleted", "soft_deleted": False}
+
 @router.get("/restaurants", response_model=List[RestaurantResponse])
 def get_all_restaurants(
     current_user: User = Depends(require_admin),

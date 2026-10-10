@@ -13,11 +13,37 @@ import 'package:foodflow/features/restaurant/presentation/home_screen.dart';
 import 'package:foodflow/features/auth/presentation/profile_screen.dart';
 import 'package:foodflow/features/restaurant/domain/models.dart';
 import 'package:foodflow/routing/app_router.dart';
+import 'package:foodflow/core/constants/app_constants.dart';
+import 'package:foodflow/core/widgets/pwa_install_guide_dialog.dart';
+import 'package:foodflow/features/auth/data/auth_repository.dart';
+import 'package:foodflow/features/admin/presentation/admin_dashboard_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class MockAuthRepo extends AuthRepository {
+  MockAuthRepo() : super(ApiClient());
+  @override
+  Future<UserModel?> getCurrentUser() async => null;
+}
+
+class FakeAuthNotifier extends AuthNotifier {
+  FakeAuthNotifier(UserModel? user) : super(MockAuthRepo()) {
+    state = AuthState(user: user, isLoading: false);
+  }
+
+  @override
+  Future<void> checkAuth() async {}
+
+  @override
+  Future<void> logout() async {
+    state = AuthState(user: null, isLoading: false);
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() {
     GoogleFonts.config.allowRuntimeFetching = false;
+    SharedPreferences.setMockInitialValues({});
   });
 
   group('CurrencyFormatter Tests', () {
@@ -812,6 +838,207 @@ void main() {
       expect(find.byType(LoginScreen), findsOneWidget);
       expect(find.text('Delivery Rider Login'), findsOneWidget);
       expect(find.byType(HomeScreen), findsNothing);
+    });
+
+    testWidgets('PwaInstallGuideDialog renders iOS and Windows tabs and instructions', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: PwaInstallGuideDialog(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Install FoodFlow App'), findsOneWidget);
+      expect(find.text('iPhone / iPad'), findsOneWidget);
+      expect(find.text('Windows 10 / 11'), findsOneWidget);
+      expect(find.text('Open in Safari'), findsOneWidget);
+
+      // Switch to Windows tab
+      await tester.tap(find.text('Windows 10 / 11'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Open Chrome or Microsoft Edge'), findsOneWidget);
+    });
+
+    testWidgets('AdminDashboardScreen displays both Approve Store and Reject buttons for pending restaurants', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final pendingRestaurant = RestaurantModel(
+        id: 99,
+        name: 'Mazali Grill',
+        cuisine: 'Arabian, Mandi',
+        rating: 4.6,
+        deliveryFeePaise: 3000,
+        minOrderPaise: 10000,
+        estimatedDeliveryTime: '30-40 min',
+        isActive: false,
+        isApproved: false, // PENDING REVIEW
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            adminRestaurantsProvider.overrideWith((ref) async => [pendingRestaurant]),
+            adminAnalyticsProvider.overrideWith((ref) async => {
+              'total_orders': 10,
+              'active_orders': 2,
+              'completed_orders': 8,
+              'total_restaurants': 1,
+              'total_customers': 20,
+              'gross_order_value_paise': 500000,
+              'net_revenue_paise': 450000,
+              'promotion_discounts_paise': 50000,
+            }),
+          ],
+          child: const MaterialApp(
+            home: AdminDashboardScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Navigate to Restaurants Directory (index 2)
+      await tester.tap(find.text('Restaurants Directory'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Mazali Grill'), findsOneWidget);
+      expect(find.text('PENDING REVIEW'), findsOneWidget);
+      expect(find.text('Approve Store'), findsOneWidget);
+      expect(find.text('Reject'), findsOneWidget);
+    });
+
+    testWidgets('AdminDashboardScreen User Management displays high-contrast user details, roles, and Delete action with confirmation', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final testUsers = [
+        UserModel(
+          id: 1,
+          email: 'admin@foodflow.com',
+          fullName: 'Super Admin',
+          role: 'ADMIN',
+          isActive: true,
+          isApproved: true,
+        ),
+        UserModel(
+          id: 2,
+          email: 'owner@mazali.com',
+          fullName: 'Mazali Owner',
+          role: 'RESTAURANT_OWNER',
+          isActive: true,
+          isApproved: true,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            authProvider.overrideWith((ref) => FakeAuthNotifier(testUsers[0])),
+            adminUsersProvider.overrideWith((ref) async => testUsers),
+            adminAnalyticsProvider.overrideWith((ref) async => {}),
+          ],
+          child: const MaterialApp(
+            home: AdminDashboardScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Navigate to Users Management (index 3)
+      await tester.tap(find.text('Users Management'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Super Admin'), findsNWidgets(2));
+      expect(find.text('admin@foodflow.com'), findsOneWidget);
+      expect(find.text('YOU (ACTIVE ADMIN)'), findsOneWidget);
+      expect(find.text('Mazali Owner'), findsOneWidget);
+      expect(find.text('owner@mazali.com'), findsOneWidget);
+      expect(find.text('RESTAURANT_OWNER'), findsOneWidget);
+
+      // Tap Delete icon on non-admin user (id: 2)
+      final deleteButtons = find.byIcon(Icons.delete_outline_rounded);
+      expect(deleteButtons, findsNWidgets(2));
+      await tester.tap(deleteButtons.last);
+      await tester.pumpAndSettle();
+
+      // Verify Delete User confirmation dialog appears
+      expect(find.text('Delete User Account'), findsOneWidget);
+      expect(find.text('Confirm Delete'), findsOneWidget);
+      expect(find.text('Cancel'), findsOneWidget);
+
+      // Dismiss dialog
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Delete User Account'), findsNothing);
+    });
+
+    testWidgets('Sign Out action clears session and updates authentication state cleanly', (tester) async {
+      SharedPreferences.setMockInitialValues({
+        AppConstants.authTokenKey: 'fake_jwt_token',
+        AppConstants.userKey: '{"id":1,"email":"user@foodflow.com","role":"CUSTOMER"}',
+      });
+
+      final fakeUser = UserModel(
+        id: 1,
+        email: 'user@foodflow.com',
+        fullName: 'Test Customer',
+        role: 'CUSTOMER',
+        isApproved: true,
+      );
+
+      final container = ProviderContainer();
+      final notifier = container.read(authProvider.notifier);
+      notifier.state = AuthState(user: fakeUser, isLoading: false);
+
+      expect(container.read(authProvider).isAuthenticated, isTrue);
+      expect(container.read(authProvider).user?.email, 'user@foodflow.com');
+
+      // Execute logout
+      await notifier.logout();
+
+      expect(container.read(authProvider).isAuthenticated, isFalse);
+      expect(container.read(authProvider).user, isNull);
+
+      // Verify routing after logout
+      // 1. Protected route like /profile redirects to /login
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/profile',
+          isWeb: true,
+        ),
+        '/login',
+      );
+
+      // 2. Public / guest browsing / stays at /
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/',
+          isWeb: true,
+        ),
+        isNull,
+      );
+
+      // 3. Admin login route stays on /admin
+      expect(
+        computeAppRedirect(
+          isLoading: false,
+          isAuthenticated: false,
+          role: null,
+          location: '/admin',
+          isWeb: true,
+        ),
+        isNull,
+      );
     });
   });
 }

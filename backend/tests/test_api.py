@@ -9,7 +9,7 @@ from app.models import (
     User, UserRole, Restaurant, FoodCategory, FoodItem, Order,
     OrderStatus, Coupon, CouponUsage, DeliveryPartner, Favorite, Notification
 )
-from app.auth import get_password_hash
+from app.auth import get_password_hash, create_access_token
 
 def test_public_registration_cannot_create_admin():
     reg_resp = client.post(
@@ -812,6 +812,106 @@ def test_end_to_end_cross_role_order_lifecycle():
     analytics = client.get("/admin/analytics", headers=adm_headers)
     assert analytics.status_code == 200
     assert analytics.json()["total_orders"] >= 1
+
+    db.close()
+
+
+def test_admin_user_deletion_safeguards_and_soft_delete():
+    db = TestingSessionLocal()
+
+    admin = User(
+        email="super_admin_del_test@foodflow.com",
+        hashed_password=get_password_hash("admin123"),
+        full_name="Super Admin Deletion Test",
+        role=UserRole.ADMIN,
+        is_active=True,
+        is_approved=True
+    )
+    clean_user = User(
+        email="clean_user@foodflow.com",
+        hashed_password=get_password_hash("pass123"),
+        full_name="Clean Customer",
+        role=UserRole.CUSTOMER,
+        is_active=True,
+        is_approved=True
+    )
+    user_with_order = User(
+        email="user_with_order@foodflow.com",
+        hashed_password=get_password_hash("pass123"),
+        full_name="Ordered Customer",
+        role=UserRole.CUSTOMER,
+        is_active=True,
+        is_approved=True
+    )
+    db.add_all([admin, clean_user, user_with_order])
+    db.commit()
+    db.refresh(admin)
+    db.refresh(clean_user)
+    db.refresh(user_with_order)
+
+    # Attach an order to user_with_order
+    rest = Restaurant(
+        name="Del Test Diner",
+        cuisine="Fast Food",
+        address_text="123 Street",
+        is_active=True,
+        is_approved=True
+    )
+    db.add(rest)
+    db.commit()
+    db.refresh(rest)
+
+    order = Order(
+        user_id=user_with_order.id,
+        restaurant_id=rest.id,
+        status="PLACED",
+        subtotal_paise=20000,
+        delivery_fee_paise=3000,
+        tax_paise=1000,
+        discount_paise=0,
+        total_paise=24000,
+        delivery_address="123 Street"
+    )
+    db.add(order)
+    db.commit()
+
+    admin_token = create_access_token(data={"sub": admin.email, "role": "ADMIN"})
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+    cst_token = create_access_token(data={"sub": clean_user.email, "role": "CUSTOMER"})
+    cst_headers = {"Authorization": f"Bearer {cst_token}"}
+
+    # 1. Non-admin cannot delete
+    unauth_resp = client.delete(f"/admin/users/{clean_user.id}", headers=cst_headers)
+    assert unauth_resp.status_code == 403
+
+    # 2. Admin cannot delete themselves
+    self_del_resp = client.delete(f"/admin/users/{admin.id}", headers=admin_headers)
+    assert self_del_resp.status_code == 400
+    assert "cannot delete your own" in self_del_resp.json()["detail"].lower()
+
+    # 3. Clean user is permanently deleted
+    clean_del_resp = client.delete(f"/admin/users/{clean_user.id}", headers=admin_headers)
+    assert clean_del_resp.status_code == 200
+    assert clean_del_resp.json()["soft_deleted"] is False
+    assert db.query(User).filter(User.id == clean_user.id).first() is None
+
+    # 4. User with dependent business records (orders) is safely soft-deleted/archived
+    order_user_del_resp = client.delete(f"/admin/users/{user_with_order.id}", headers=admin_headers)
+    assert order_user_del_resp.status_code == 200
+    assert order_user_del_resp.json()["soft_deleted"] is True
+    
+    # Verify user record is archived & deactivated, but preserved for order relation
+    db.expire_all()
+    archived_user = db.query(User).filter(User.id == user_with_order.id).first()
+    assert archived_user is not None
+    assert archived_user.is_active is False
+    assert archived_user.is_approved is False
+    assert "deleted_" in archived_user.email
+
+    # Order history remains intact
+    persisted_order = db.query(Order).filter(Order.id == order.id).first()
+    assert persisted_order is not None
+    assert persisted_order.user_id == user_with_order.id
 
     db.close()
 
